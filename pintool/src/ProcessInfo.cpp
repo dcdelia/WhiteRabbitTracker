@@ -88,7 +88,7 @@ void ProcessInfo::addCurrentImageToTree(IMG img) {
 		// Parse the export table of the current image and store in global variable
 		std::map<W::DWORD, std::string> exportsMap = std::map<W::DWORD, std::string>();
 		std::map<W::DWORD, W::DWORD> rvaToFileOffsetMap = std::map<W::DWORD, W::DWORD>();
-		parseExportTable(data, imgStart, exportsMap, rvaToFileOffsetMap, false);
+		parseExportTable(data, imgStart, exportsMap, rvaToFileOffsetMap, false); // TODO check status?
 		gs->dllExports.push_back(monitoredDLL());
 		monitoredDLL &dll = gs->dllExports.back();
 		dll.dllPath = (void*)data;
@@ -194,7 +194,7 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 
 	if (pNTHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
 		std::cerr << "64-bit header unsupported yet (DDL exports parsing)!" << std::endl;
-		return -1;
+		return false;
 	}
 
 	W::PIMAGE_EXPORT_DIRECTORY pExportDir;
@@ -210,7 +210,7 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 	header = peGetEnclosingSectionHeader(exportsStartRVA, pNTHeader);
 	if (!header) {
 		std::cerr << "Could not find exports header in PE during DLL exports parsing!" << std::endl;
-		return -1;
+		return false;
 	}
 
 	pExportDir = (W::PIMAGE_EXPORT_DIRECTORY)peGetPtrFromRVA(exportsStartRVA, pNTHeader, pImageBase);
@@ -219,7 +219,7 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 	pszFuncNames = (W::PDWORD)peGetPtrFromRVA(pExportDir->AddressOfNames, pNTHeader, pImageBase);
 	if (!pExportDir || !pdwFunctions || !pwOrdinals || !pszFuncNames) {
 		std::cerr << "Some PE fields are just not okay during DLL exports parsing!" << std::endl;
-		return -1;
+		return false;
 	}
 	size_t forwarders = 0, data = 0;
 	size_t unnamed = pExportDir->NumberOfFunctions - pExportDir->NumberOfNames;
@@ -246,5 +246,5 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 			rvaToFileOffsetMap.insert(std::make_pair(rva, fileOffset));
 		}
 	}
-	return 0;
+	return true;
 }

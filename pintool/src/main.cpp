@@ -104,7 +104,7 @@ VOID InstrumentInstruction(TRACE trace, VOID *v) {
 /* the current DLL to find which system API is called                    */
 /* ===================================================================== */
 W::DWORD searchNearestAddressExportMap(std::map<W::DWORD, std::string> exportsMap, ADDRINT addr) {
-	W::DWORD currentAddr;
+	W::DWORD currentAddr = 0;
 	for (const auto& p : exportsMap) {
 		if (!currentAddr) {
 			currentAddr = p.first;
@@ -167,7 +167,7 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo) {
 			const std::string func = get_func_at(addrTo);
 			// Get DLL name (Image name) from the Pin APIs and the interval tree
 			itreenode_t* currentNode = itree_search(gs->dllRangeITree, addrTo);
-			for (int i = 0; i < gs->dllExports.size(); i++) {
+			for (size_t i = 0; i < gs->dllExports.size(); i++) {
 				if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 					exportsMap = gs->dllExports[i].exports;
 					dllName = std::string((char*)gs->dllExports[i].dllPath);
@@ -193,7 +193,7 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo) {
 			if (IMG_Valid(targetModule)) {
 				// Log the API call of the called shellcode (get function name and dll name)
 				itreenode_t* currentNode = itree_search(gs->dllRangeITree, addrTo);
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						exportsMap = gs->dllExports[i].exports;
 						dllName = std::string((char*)gs->dllExports[i].dllPath);

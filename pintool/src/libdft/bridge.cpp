@@ -73,7 +73,7 @@ void logShadowCallStack(thread_ctx_t* thread_ctx, callStackThreadP callStackThre
 	ADDRINT hashTop = (*(callStackThread->callStack))[callStackThread->callStackTop - 1].hashID;
 	std::stringstream ss;
 	ss << "- " << std::hex << hashTop << "\n";
-	for (int i = 0; i < callStackThread->callStackTop; i++) {
+	for (UINT32 i = 0; i < callStackThread->callStackTop; i++) {
 		callStackFrame frameIdx = (*(callStackThread->callStack))[i];
 		ss << frameIdx.calladdr << " " <<
 			frameIdx.retaddr << " " <<
@@ -150,7 +150,7 @@ int checkWhichOperandsAreTainted(thread_ctx_t *thread_ctx) {
 
 // Search the nearest address in the export map of the current DLL to find which system API is tainted
 W::DWORD searchNearestValueExportMap(std::map<W::DWORD, std::string> exportsMap, ADDRINT addr) {
-	W::DWORD currentAddr;
+	W::DWORD currentAddr = 0;
 	for (const auto& p : exportsMap) {
 		if (!currentAddr) {
 			currentAddr = p.first;
@@ -252,7 +252,7 @@ static void PIN_FAST_ANALYSIS_CALL
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -321,7 +321,7 @@ mem_imm_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -385,7 +385,7 @@ reg_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg_op0,
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -453,7 +453,7 @@ reg_mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UI
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -521,7 +521,7 @@ mem_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -585,7 +585,7 @@ reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UINT32
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -653,7 +653,7 @@ mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memAddre
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -717,7 +717,7 @@ alert(thread_ctx_t *thread_ctx, ADDRINT addr, ADDRINT size) {
 		if (currentNode != NULL) {
 			if (TTINFO(logTaintedSystemCode) && _knobAlertSystemCode) {
 				TTINFO(logTaintedSystemCode) = 0;
-				for (int i = 0; i < gs->dllExports.size(); i++) {
+				for (size_t i = 0; i < gs->dllExports.size(); i++) {
 					if (strcmp((char*)gs->dllExports[i].dllPath, (char*)currentNode->data) == 0) {
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
@@ -920,7 +920,8 @@ void instrumentForTaintCheck(INS ins) {
 				(AFUNPTR)detected_call,
 				IARG_FAST_ANALYSIS_CALL,
 				IARG_REG_VALUE, thread_ctx_ptr,
-				IARG_ADDRINT, INS_DirectBranchOrCallTargetAddress(ins), // Target address of call
+				// INS_DirectBranchOrCallTargetAddress is deprecated
+				IARG_ADDRINT, INS_DirectControlFlowTargetAddress(ins), // Target address of call
 				IARG_ADDRINT, INS_NextAddress(ins), // Next address of call -> return address of the call
 				IARG_REG_VALUE, REG_STACK_PTR, // SP before ret executed
 				IARG_ADDRINT, INS_Address(ins), // Address of the instruction
@@ -1129,7 +1130,8 @@ end:
 		- mem_32 imm 
 	*/
 	if (operands > 1 && INS_OperandIsImmediate(ins, OP_1)) {
-		ADDRINT immValue = INS_OperandImmediate(ins, OP_1);
+		// Pin docs: on 32-bit systems only the lower 32 bits are utilized
+		ADDRINT immValue = (ADDRINT)INS_OperandImmediate(ins, OP_1);
 		// Get length information
 		xed_decoded_inst_t* xedd = INS_XedDec(ins);
 		INT32 length_bits = xed_decoded_inst_operand_length_bits(xedd, OP_1);
