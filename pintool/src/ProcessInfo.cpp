@@ -64,6 +64,12 @@ const bool ProcessInfo::updateTracedModuleSection(ADDRINT Rva) {
 /* ===================================================================== */
 void ProcessInfo::addCurrentImageToTree(IMG img) {
 	if (IMG_IsMainExecutable(img)) {
+		// Dump information on base address
+		ADDRINT imagebase = IMG_LowAddress(img);
+		State::globalState* gs = State::getGlobalState();
+		char buf[64];
+		sprintf(buf, "Base address for executable: %x", imagebase);
+		gs->logInfo->logMisc(std::string(buf));
 		return;
 	}
 	// Get the current image name (e.g. DLL name)

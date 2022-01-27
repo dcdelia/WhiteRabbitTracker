@@ -69,6 +69,10 @@ public:
 	/* ===================================================================== */
 	void logTaintedBranch(ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash);
 	/* ===================================================================== */
+	/* Log any miscellaneous info                                            */
+	/* ===================================================================== */
+	void logMisc(std::string message);
+	/* ===================================================================== */
 	/* Utility function to extract a dll name from module name (parsing)     */
 	/* ===================================================================== */
 	std::string get_dll_name(const std::string& str);

@@ -4,8 +4,8 @@
 #include <fstream>
 #include <intrin.h>
 
-#define LOGPATH               "C:\\Pin315\\"
-#define LOGPATH_TAINT         "C:\\Pin315\\taint\\"
+#define LOGPATH               "C:\\Pin315\\experiment\\"
+#define LOGPATH_TAINT         "C:\\Pin315\\experiment\\taint\\"
 #define USE_SCZTOON           1
 #define SIZE_SCZTOON	      5*1024*1024	// 5 MB (reduce with many threads?)
 #define SIZE_SCZ		      2048		// max bytes written at a time

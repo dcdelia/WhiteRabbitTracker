@@ -210,8 +210,6 @@ condBranchAnalysis(thread_ctx_t *thread_ctx, ADDRINT addr, ADDRINT size, BOOL is
 		logInstruction(tdata, "%s; 0x%08x 0x%08x %s 0x%08x\n", alertType.c_str(), addr, targetAddress, instruction.c_str(), hash);
 		gs->logInfo->logTaintedBranch(addr, targetAddress, instruction, hash);
 		_alertApiTracingCounter = API_AFTER_TAINTED_BR;
-		// Reset the offending instruction
-		TTINFO(offendingInstruction) = 0;
 	}
 }
 
@@ -237,13 +235,6 @@ static void PIN_FAST_ANALYSIS_CALL
 			hashMapping.insert(std::pair<ADDRINT, bool>(hash, 0));
 			// Log the shadow call stack
 			logShadowCallStack(thread_ctx, thread_ctx->ttinfo.shadowStackThread);
-		}
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
 		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
@@ -307,13 +298,6 @@ mem_imm_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 		ADDRINT memContent;
 		memset(&memContent, 0, sizeof(ADDRINT));
 		PIN_SafeCopy(&memContent, (ADDRINT*)memAddress, (readSize < sizeof(ADDRINT) ? readSize : sizeof(ADDRINT)));
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
-		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
 		// If system code, log the tainted instruction one time
@@ -371,13 +355,6 @@ reg_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg_op0,
 			// Log the shadow call stack
 			logShadowCallStack(thread_ctx, thread_ctx->ttinfo.shadowStackThread);
 		}			
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
-		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
 		// If system code, log the tainted instruction one time
@@ -439,13 +416,6 @@ reg_mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UI
 		ADDRINT memContent; 
 		memset(&memContent, 0, sizeof(ADDRINT));
 		PIN_SafeCopy(&memContent, (ADDRINT*)memAddress, (readSize < sizeof(ADDRINT) ? readSize : sizeof(ADDRINT)));
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
-		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
 		// If system code, log the tainted instruction one time
@@ -507,13 +477,6 @@ mem_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 		ADDRINT memContent; 
 		memset(&memContent, 0, sizeof(ADDRINT));
 		PIN_SafeCopy(&memContent, (ADDRINT*)memAddress, (readSize < sizeof(ADDRINT) ? readSize : sizeof(ADDRINT)));
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
-		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
 		// If system code, log the tainted instruction one time
@@ -570,13 +533,6 @@ reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UINT32
 			hashMapping.insert(std::pair<ADDRINT, bool>(hash, 0));
 			// Log the shadow call stack
 			logShadowCallStack(thread_ctx, thread_ctx->ttinfo.shadowStackThread);
-		}		
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
 		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
@@ -639,13 +595,6 @@ mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memAddre
 		ADDRINT memContent;
 		memset(&memContent, 0, sizeof(ADDRINT));
 		PIN_SafeCopy(&memContent, (ADDRINT*)memAddress, (readSize < sizeof(ADDRINT) ? readSize : sizeof(ADDRINT)));
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
-		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
 		// If system code, log the tainted instruction one time
@@ -703,13 +652,6 @@ alert(thread_ctx_t *thread_ctx, ADDRINT addr, ADDRINT size) {
 			// Log the shadow call stack
 			logShadowCallStack(thread_ctx, thread_ctx->ttinfo.shadowStackThread);
 		}			
-		// If the instruction is different from a mov, save it as a offending instruction (possible instruction which affected a branch execution)
-		if (strcmp("mov", ins.c_str())) {
-			TTINFO(offendingInstruction) = addr;
-		}
-		else {
-			TTINFO(offendingInstruction) = 0;
-		}
 		// See which operands are tainted and which are not
 		int operandsTainted = checkWhichOperandsAreTainted(thread_ctx);
 		// If system code, log the tainted instruction one time
@@ -900,6 +842,11 @@ static void PIN_FAST_ANALYSIS_CALL assert_mem_generic(thread_ctx_t *thread_ctx, 
 	}
 }
 
+// used only over instructions that may modify EFLAGS
+static void PIN_FAST_ANALYSIS_CALL update_offending_instruction(thread_ctx_t* thread_ctx, ADDRINT addr) {
+	TTINFO(offendingInstruction) = TTINFO(tainted) ? addr : 0; // optimize by multiplication with double not?
+}
+
 void instrumentForTaintCheck(INS ins) {
 	// Initialize instruction operands and instruction opcode
 	REG reg_op0, reg_op1;
@@ -953,22 +900,6 @@ void instrumentForTaintCheck(INS ins) {
 			IARG_BRANCH_TARGET_ADDR, // Target address of ret
 			IARG_REG_VALUE, REG_STACK_PTR, // SP before ret execution
 			IARG_ADDRINT, INS_Address(ins), // Address of the instruction
-			IARG_END);
-	}
-
-	// Instrument conditional jump instructions for control flow checks
-	if (INS_Category(ins) == XED_CATEGORY_COND_BR) {
-		INS_InsertCall(
-			ins,
-			IPOINT_BEFORE,
-			(AFUNPTR)condBranchAnalysis,
-			IARG_FAST_ANALYSIS_CALL,
-			IARG_REG_VALUE, thread_ctx_ptr,
-			IARG_INST_PTR, // ip of the instruction
-			IARG_ADDRINT, size, // instruction size
-			IARG_BRANCH_TAKEN,
-			IARG_BRANCH_TARGET_ADDR, // target of conditional jump
-			IARG_REG_VALUE, REG_STACK_PTR, // SP before ins is executed
 			IARG_END);
 	}
 
@@ -1121,6 +1052,34 @@ void instrumentForTaintCheck(INS ins) {
 	}
 
 end:
+	/* Special provisions for handling offending instruction for branches*/
+	if (!INS_IsControlFlow(ins) && !INS_IsMov(ins)) {
+		INS_InsertCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)update_offending_instruction,
+			IARG_FAST_ANALYSIS_CALL,
+			IARG_REG_VALUE, thread_ctx_ptr,
+			IARG_INST_PTR, // Instruction pointer
+			IARG_END);
+	}
+	else {
+		// Instrument conditional jump instructions for control flow checks
+		if (INS_Category(ins) == XED_CATEGORY_COND_BR) {
+			INS_InsertCall(
+				ins,
+				IPOINT_BEFORE,
+				(AFUNPTR)condBranchAnalysis,
+				IARG_FAST_ANALYSIS_CALL,
+				IARG_REG_VALUE, thread_ctx_ptr,
+				IARG_INST_PTR, // ip of the instruction
+				IARG_ADDRINT, size, // instruction size
+				IARG_BRANCH_TAKEN,
+				IARG_BRANCH_TARGET_ADDR, // target of conditional jump
+				IARG_REG_VALUE, REG_STACK_PTR, // SP before ins is executed
+				IARG_END);
+		}
+	}
+
 	/*Different cases of immediate instructions:
 		- reg_8 imm
 		- reg_16 imm

@@ -42,7 +42,7 @@ addTaintRegister(thread_ctx, taint_gpr, _tags, true); \
 #define TAINT_NTFINDWINDOW           0
 // Function calls
 #define TAINT_ISDEBUGGERPRESENT      0
-#define TAINT_CHECKREMOTEDEBUGGER    0
+#define TAINT_CHECKREMOTEDEBUGGER    1
 #define TAINT_ENUMPROCESSES          0
 #define TAINT_PROCESS32FIRSTNEXT     0
 #define TAINT_GETDISKFREESPACE       0

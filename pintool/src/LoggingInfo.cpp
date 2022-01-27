@@ -156,3 +156,19 @@ void LoggingInfo::logTaintedBranch(ADDRINT addr, ADDRINT targetAddress, std::str
 	// Flush the file
 	m_traceFile.flush();
 }
+
+/* ===================================================================== */
+/* Log any miscellaneous info                                            */
+/* ===================================================================== */
+void LoggingInfo::logMisc(std::string message) {
+	// Check if the file exist
+	if (!createFile()) {
+		return;
+	}
+	m_traceFile
+		<< "[MISC] "
+		<< message
+		<< std::endl;
+	// Flush the file
+	m_traceFile.flush();
+}
