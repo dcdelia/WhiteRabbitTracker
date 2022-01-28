@@ -72,7 +72,7 @@ VOID GetAdaptersInfoEntry(PIP_ADAPTER_INFO* adapInfo, W::PULONG* size);
 VOID GetAdaptersInfoExit(CONTEXT* ctx, ADDRINT ret, ADDRINT esp);
 VOID EnumDisplaySettingsEntry(W::LPCTSTR* devName, CONTEXT* ctx);
 VOID SetupDiGetDeviceRegistryPropertyHookEntry(W::PBYTE* buffer);
-VOID SetupDiGetDeviceRegistryPropertyHookExit(ADDRINT ret);
+VOID SetupDiGetDeviceRegistryPropertyHookExit(CONTEXT* ctx, ADDRINT ret);
 VOID SetTimerEntry(W::UINT* time);
 VOID WaitForSingleObjectEntry(W::DWORD *time);
 VOID IcmpSendEchoEntry(ADDRINT* replyBuffer, ADDRINT* replySize, W::DWORD *time);

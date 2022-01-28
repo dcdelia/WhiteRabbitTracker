@@ -210,6 +210,7 @@ void SpecialInstructionsHandler::CpuidCalled(ADDRINT ip, CONTEXT* ctxt, ADDRINT 
 void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, ADDRINT cur_eip, ADDRINT* cpuidCount) {
 	CHECK_EIP_ADDRESS(cur_eip);
 	(*cpuidCount)++;
+	uint8_t color = GET_TAINT_COLOR(TT_CPUID);
 	// Get class to global objects
 	State::globalState* gs = State::getGlobalState();
 	SpecialInstructionsHandler *classHandler = SpecialInstructionsHandler::getInstance();
@@ -224,10 +225,11 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 		_ecx &= (mask >> 1);
 		if ((*cpuidCount) <= MAX_CPUID)
 			classHandler->logInfo->logBypass("CPUID 0x1");
-#if TAINT_CPUID
-		TAINT_TAG_REG(ctxt, GPR_ECX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2); // very high load
-		TAINT_TAG_REG(ctxt, GPR_EAX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2); // very high load
-#endif	
+		
+		if (color) {
+			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color); // very high load
+			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color); // very high load
+		}
 	}
 	// EAX >= 0x40000000 && EAX <= 0x400000FF -> reserved cpuid levels for Intel and AMD to provide an interface to pass information from the hypervisor to the guest (VM)
 	else if (gs->cpuid_eax >= 0x40000000 && gs->cpuid_eax <= 0x400000FF) {
@@ -237,36 +239,36 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 		_edx = 0x0ULL;
 		if ((*cpuidCount) <= MAX_CPUID) // very high load
 			classHandler->logInfo->logBypass("CPUID 0x4");
-#if TAINT_CPUID
-		TAINT_TAG_REG(ctxt, GPR_EBX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2); // very high load
-		TAINT_TAG_REG(ctxt, GPR_ECX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2); // very high load
-		TAINT_TAG_REG(ctxt, GPR_EDX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2); // very high load
-		TAINT_TAG_REG(ctxt, GPR_EAX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2); // very high load
-#endif
+		if (color) {
+			TAINT_TAG_REG(ctxt, GPR_EBX, color, color, color, color); // very high load
+			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color); // very high load
+			TAINT_TAG_REG(ctxt, GPR_EDX, color, color, color, color); // very high load
+			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color); // very high load
+		}
 	}
 	else if (gs->cpuid_eax == 0x80000000) {
 		if ((*cpuidCount) <= MAX_CPUID) 
 			classHandler->logInfo->logBypass("CPUID 0x80");
-#if TAINT_CPUID
-		TAINT_TAG_REG(ctxt, GPR_EAX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2);
-#endif
+		if (color) {
+			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
+		}
 	}
 	else if (gs->cpuid_eax == 0x80000001) {
 		if ((*cpuidCount) <= MAX_CPUID) 
 			classHandler->logInfo->logBypass("CPUID 0x81");
-#if TAINT_CPUID
-		TAINT_TAG_REG(ctxt, GPR_EAX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2);
-#endif
+		if (color) {
+			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
+		}
 	}
 	else if (gs->cpuid_eax >= 0x80000002 && gs->cpuid_eax <= 0x80000004) {
 		if ((*cpuidCount) <= MAX_CPUID)
 			classHandler->logInfo->logBypass("CPUID 0x82+");
-#if TAINT_CPUID
-		TAINT_TAG_REG(ctxt, GPR_EBX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2);
-		TAINT_TAG_REG(ctxt, GPR_ECX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2);
-		TAINT_TAG_REG(ctxt, GPR_EDX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2);
-		TAINT_TAG_REG(ctxt, GPR_EAX, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2, TAINT_COLOR_2);
-#endif
+		if (color) {
+			TAINT_TAG_REG(ctxt, GPR_EBX, color, color, color, color);
+			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color);
+			TAINT_TAG_REG(ctxt, GPR_EDX, color, color, color, color);
+			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
+		}
 	}
 	if (_knobBypass) {
 		// Change cpuid results (EBX, ECX, EDX)
@@ -297,10 +299,11 @@ void SpecialInstructionsHandler::AlterRdtscValues(ADDRINT ip, CONTEXT * ctxt, AD
 			classHandler->logInfo->logBypass("RDTSC"); 
 	}
 	// Taint the registers (very high load)
-#if TAINT_RDTSC
-	TAINT_TAG_REG(ctxt, GPR_EAX, 1, 1, 1, 1);
-	TAINT_TAG_REG(ctxt, GPR_EDX, 1, 1, 1, 1);
-#endif
+	uint8_t color = GET_TAINT_COLOR(TT_RDTSC);
+	if (color) {
+		TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
+		TAINT_TAG_REG(ctxt, GPR_EDX, color, color, color, color);
+	}
 }
 /* ===================================================================== */
 /* Function to handle the int 2d instruction                             */
@@ -350,10 +353,11 @@ void SpecialInstructionsHandler::InEaxEdxCalledAlterValueEbx(CONTEXT* ctxt, ADDR
 		classHandler->logInfo->logBypass("IN EAX, DX");
 	}
 	// Taint the registers
-#if TAINT_IN
-	TAINT_TAG_REG(ctxt, GPR_EAX, 1, 1, 1, 1);
-	TAINT_TAG_REG(ctxt, GPR_EBX, 1, 1, 1, 1);
-#endif
+	uint8_t color = GET_TAINT_COLOR(TT_IN);
+	if (color) {
+		TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
+		TAINT_TAG_REG(ctxt, GPR_EBX, color, color, color, color);
+	}
 } 
 
 /* ===================================================================== */
@@ -366,9 +370,10 @@ VOID SpecialInstructionsHandler::KillObsidiumDiskDriveCheck(CONTEXT* ctxt) {
 		*((ADDRINT*)_eax) = 0;
 	}
 	// Taint the registers
-#if TAINT_OBSIDIUM_DISK_DRIVE
-	TAINT_TAG_REG(ctxt, GPR_EAX, 1, 1, 1, 1);
-#endif
+	uint8_t color = GET_TAINT_COLOR(TT_OBSIDIUM_DISK_DRIVE);
+	if (color) {
+		TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
+	}
 }
 
 /* ===================================================================== */
