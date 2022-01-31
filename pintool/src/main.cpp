@@ -404,13 +404,16 @@ int main(int argc, char * argv[]) {
 	_knobApiTracing = knobApiTracing.Value();
 	_knobAlertSystemCode = knobSystemCodeAlert.Value();
 
-	// Initialize global state informations
+	// Initialize global state information
 	State::init();
 	State::globalState* gs = State::getGlobalState();
 	gs->logInfo = &logInfo;
 
 	// Initialize elements to be hidden
 	HiddenElements::initializeHiddenStuff();
+
+	// Initialize taint hooks
+	setupTaintTrackingPolicy();
 
 	// Remove old file related to taint analysis
 	W::WIN32_FIND_DATA ffd; 

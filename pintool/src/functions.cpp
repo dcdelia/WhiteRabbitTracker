@@ -32,6 +32,9 @@ namespace Functions {
 	static std::map<std::string, int> fMap;
 	static std::map<std::string, int> fLoggingMap; // simple hooks
 
+	// TODO make this visible outsize
+	std::map<const char*, int> apiCallCounts;
+
 	// main source: malapi.io + custom filtering
 	static const char* apiname_only[] = {
 		// processes
@@ -480,7 +483,9 @@ namespace Functions {
 /* Special-purpose logging hooks */
 VOID LogFunctionByName(ADDRINT esp, const char* name) {
 	CHECK_ESP_RETURN_ADDRESS(esp);
-	logInfo->logMisc(name);
+	if (!Functions::apiCallCounts[name]++) { // only on first invocation
+		logInfo->logMisc(name);
+	}
 }
 
 
