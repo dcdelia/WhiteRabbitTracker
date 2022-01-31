@@ -90,6 +90,11 @@ VOID WMIQueryHookEntry(W::LPCWSTR* query, W::VARIANT** var);
 VOID WMIQueryHookExit();
 
 /* ===================================================================== */
+/* SPECIAL-PURPOSE LOGGING HOOKS										 */
+/* ===================================================================== */
+VOID LogFunctionByName(ADDRINT esp, const char* name);
+
+/* ===================================================================== */
 /* INSTRUCTION HOOKS (taint sinks)                                       */
 /* ===================================================================== */
 // ACTUALLY DEFINED FOR EACH INSTRUCTION IN LIBDFT_API
@@ -158,4 +163,14 @@ enum {
 	FINDWINDOW_INDEX,
 	CLOSEH_INDEX,
 	WMI_INDEX
+};
+
+/* ===================================================================== */
+/* Additional hooking identifiers for special-purpose logging            */
+/* ===================================================================== */
+
+enum {
+	LOG_IOC_APINAME_ONLY,
+	LOG_IOC_APINAME_IF_NOT_SELF,
+	LOG_STRINGFUN_TWO_ARGS
 };
