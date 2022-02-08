@@ -41,4 +41,5 @@ namespace SYSHOOKS {
 	VOID NtQueryAttributesFile_entry(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std);
 	VOID NtQueryAttributesFile_exit(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std);
 	VOID NtUserFindWindowEx_exit(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std);
+	VOID NtWaitForSingleObject_entry(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std);
 }

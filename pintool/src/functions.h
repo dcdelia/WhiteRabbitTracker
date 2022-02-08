@@ -93,6 +93,7 @@ VOID WMIQueryHookExit();
 /* SPECIAL-PURPOSE LOGGING HOOKS										 */
 /* ===================================================================== */
 VOID LogFunctionByName(ADDRINT esp, const char* name);
+VOID LogFunctionIfNotSelfByName(ADDRINT esp, W::HANDLE hProcess, const char* name);
 
 /* ===================================================================== */
 /* INSTRUCTION HOOKS (taint sinks)                                       */

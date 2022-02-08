@@ -236,6 +236,8 @@ namespace SYSHOOKING {
 	}
 
 	static VOID registerHooks() {
+		// workaround for IcmpSendEcho instrumentation
+		sysEntryHooks[lookupIndex("NtWaitForSingleObject")] = &SYSHOOKS::NtWaitForSingleObject_entry;
 		// Handle the NtDelayExecution API
 		sysEntryHooks[lookupIndex("NtDelayExecution")] = &SYSHOOKS::NtDelayexecution_entry;
 		// Handle the NtCreateFile API (Virtualbox/VMware files access) 

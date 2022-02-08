@@ -91,7 +91,6 @@ ADDRINT updateHashMapping(thread_ctx_t* thread_ctx) {
 	std::pair<std::set<ADDRINT>::iterator, bool> it = callStackHashes.insert(hash);
 	if (it.second) {
 		logShadowCallStack(thread_ctx, thread_ctx->ttinfo.shadowStackThread);
-		fprintf(stderr, "ADDED HASH %x\n", hash);
 	}
 	return hash;
 }

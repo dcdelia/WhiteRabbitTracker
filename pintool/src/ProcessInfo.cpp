@@ -91,6 +91,16 @@ void ProcessInfo::addCurrentImageToTree(IMG img) {
 		PIN_LockClient();
 		State::globalState* gs = State::getGlobalState();
 
+		// Special cases are ntdll (syscalls from user code) and iphlpapi (IcmpSendEcho workaround)
+		if (strstr(data, "iphlpapi")) {
+			gs->iphlpapi_start = imgStart;
+			gs->iphlpapi_end = imgEnd;
+		}
+		else if (strstr(data, "ntdll")) {
+			gs->ntdll_start = imgStart;
+			gs->ntdll_end = imgEnd;
+		}
+
 		// Parse the export table of the current image and store in global variable
 		std::map<W::DWORD, std::string> exportsMap = std::map<W::DWORD, std::string>();
 		std::map<W::DWORD, W::DWORD> rvaToFileOffsetMap = std::map<W::DWORD, W::DWORD>();

@@ -43,6 +43,8 @@ namespace State {
 		std::vector<monitoredDLL> dllExports;
 		ADDRINT cpuid_eax;
 		LoggingInfo* logInfo;
+		ADDRINT ntdll_start, ntdll_end;
+		ADDRINT iphlpapi_start, iphlpapi_end;
 	};
 
 	/* ===================================================================== */

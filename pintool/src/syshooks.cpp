@@ -7,6 +7,84 @@
 
 namespace SYSHOOKS {
 
+	static ADDRINT getRAfromNtdllStub(ADDRINT* esp) {
+		State::globalState* gs = State::getGlobalState();
+		ADDRINT addr = *esp;
+		if (addr < gs->ntdll_start || addr > gs->ntdll_end) return NULL;
+
+		uint8_t bytes[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+		PIN_SafeCopy(bytes, (void*)addr, 6);
+
+		// credits: https://github.com/dcdelia/sniper/blob/master/DBI/src/syscalls.cpp
+		ADDRINT ra;
+		if (bytes[0] == 0xC2 || bytes[0] == 0xC3) {
+			ra = *esp;
+		}
+		else {
+			if (!(bytes[0] == 0x83 && bytes[1] == 0xC4 && bytes[2] == 0x04)) {
+				fprintf(stderr, "Didn't meet an add esp, 4 but those instead: %x%x%x\n",
+					(unsigned char)bytes[0], (unsigned char)bytes[1], (unsigned char)bytes[2]);
+				return NULL;
+			}
+			if (!(bytes[3] == 0xC2 || bytes[3] == 0xC3)) { // TODO also byte[5] == 0 for C3?
+				fprintf(stderr, "Didn't meet a retn [??] but those instead: %x%x%x\n",
+					(unsigned char)bytes[3], (unsigned char)bytes[4], (unsigned char)bytes[5]);
+				return NULL;
+			}
+			// the RA for the caller will be at ESP+4
+			ra = *((ADDRINT*)esp + 1);
+		}
+
+		return ra;
+	}
+
+	/* ===================================================================== */
+	/* Workaround for IcmpSendEcho* missed by Pin                            */
+	/* ===================================================================== */
+
+	// Win7 SP1 WoW64 values
+#define ICMP_SENDECHO2EX_RET_OFFSET	0x85E9
+#define ICMP_SENDECHO2_RET_OFFSET	0x8768
+#define ICMP_SENDECHO_RET_OFFSET	0x8732
+
+	W::LARGE_INTEGER NtWFSO_timeout;
+
+	VOID NtWaitForSingleObject_entry(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std) {
+		// TODO for now it will be Win7-WOW64-specific
+		ADDRINT *esp = (ADDRINT*)PIN_GetContextReg(ctx, REG_STACK_PTR);
+		
+		ADDRINT raFromNtdll = getRAfromNtdllStub(esp);
+		if (!raFromNtdll) return;
+
+		State::globalState* gs = State::getGlobalState();
+
+		if (raFromNtdll == gs->iphlpapi_start + ICMP_SENDECHO2EX_RET_OFFSET) {
+			ADDRINT ebp = PIN_GetContextReg(ctx, REG_GBP);
+			ADDRINT retToCaller = *(ADDRINT*)(ebp+4);
+			
+			// internal call from IcmpSendEcho2
+			if (retToCaller == gs->iphlpapi_start + ICMP_SENDECHO2_RET_OFFSET) {
+				// ret 0x30 upon leaving, then there is only a pop ebp before ret 2c
+				retToCaller = *(ADDRINT*)(ebp + 4 + 0x30 + 8);
+				// further walk up if from IcmpSendEcho
+				if (retToCaller == gs->iphlpapi_start + ICMP_SENDECHO_RET_OFFSET) {
+					// ret 0x2c upon leaving, then there is only a pop ebp before ret 20
+					retToCaller = *(ADDRINT*)(ebp + 4 + 0x30 + 8 + 4 + 0x2c + 4);
+				}
+			}
+			
+			if (!itree_search(gs->dllRangeITree, retToCaller)) { // from program code
+				//fprintf(stderr, "Call to IcmpSendEcho* from program code returning to %x\n", retToCaller);
+				//fprintf(stderr, "Third argument for NtWaitForSingleObject: %d\n", sc->arg2);
+				if (sc->arg2 == 0) {
+					PIN_SetSyscallArgument(ctx, std, 2, (ADDRINT)&NtWFSO_timeout);
+					NtWFSO_timeout.LowPart = BP_ICMP_ECHO;
+					NtWFSO_timeout.HighPart = 0;				
+				}
+			}
+		}
+	}
+
 	/* ===================================================================== */
 	/* Handle the NtDelayExecution API                                       */
 	/* ===================================================================== */

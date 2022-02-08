@@ -90,6 +90,22 @@ namespace Functions {
 		// DeleteFileA NtMakeTemporaryObject SetCurrentDirectory NtContinue
 	};
 
+	typedef struct {
+		const char* name;
+		uint8_t handle_arg_idx;
+	} api_filter_self_t;
+
+	static const api_filter_self_t apinames_if_not_self [] = {
+		{ "ReadProcessMemory", 0 },
+		{ "NtAllocateVirtualMemory", 0 },
+		{ "VirtualAllocEx", 0 },
+		{ "VirtualAllocExNuma", 0 },
+		{ "WriteProcessMemory", 0 },
+		{ "NtUnmapViewOfSection", 0 },
+		{ "NtWriteVirtualMemory", 0 },
+		{ "NtReadVirtualMemory", 0 },
+		{ "NtProtectVirtualMemory", 0}
+	};
 
 	/* ===================================================================== */
 	/* Initialization function to define API map                             */
@@ -132,7 +148,7 @@ namespace Functions {
 		fMap.insert(std::pair<std::string, int>("GetTickCount", GETTICKCOUNT_INDEX));
 		fMap.insert(std::pair<std::string, int>("SetTimer", SETTIMER_INDEX));
 		fMap.insert(std::pair<std::string, int>("WaitForSingleObject", WAITOBJ_INDEX));
-		fMap.insert(std::pair<std::string, int>("IcmpSendEcho", ICMPECHO_INDEX));
+		//fMap.insert(std::pair<std::string, int>("IcmpSendEcho", ICMPECHO_INDEX));
 		// Other hooks
 		fMap.insert(std::pair<std::string, int>("LoadLibraryA", LOADLIBA_INDEX));
 		fMap.insert(std::pair<std::string, int>("LoadLibraryW", LOADLIBW_INDEX));
@@ -146,10 +162,21 @@ namespace Functions {
 		fMap.insert(std::pair<std::string, int>("NtClose", CLOSEH_INDEX)); 
 		fMap.insert(std::pair<std::string, int>("?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z", WMI_INDEX));
 	
+		// hooks for logging
 		for (size_t i = 0; i < sizeof(apiname_only)/sizeof(apiname_only[0]); ++i) {
 			fLoggingMap.insert(std::pair<std::string, int>(apiname_only[i], LOG_IOC_APINAME_ONLY));
 		}
+		for (size_t i = 0; i < sizeof(apinames_if_not_self) / sizeof(apinames_if_not_self[0]); ++i) {
+			fLoggingMap.insert(std::pair<std::string, int>(apinames_if_not_self[i].name, LOG_IOC_APINAME_IF_NOT_SELF));
+		}
 	
+	}
+
+	static int lookupArgForAPINotSelf(const char* name) {
+		for (size_t i = 0; i < sizeof(apinames_if_not_self) / sizeof(apinames_if_not_self[0]); ++i) {
+			const api_filter_self_t* item = &apinames_if_not_self[i];
+			if (!strcmp(name, item->name)) return item->handle_arg_idx;
+		}
 	}
 
 	static void AddLoggingHooks(IMG img) {
@@ -165,18 +192,25 @@ namespace Functions {
 				RTN_Open(rtn);
 				switch (index) {
 				case(LOG_IOC_APINAME_ONLY):
-					// Add hooking with IPOINT_AFTER to taint the EAX register on output
 					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)LogFunctionByName,
 						IARG_REG_VALUE, REG_STACK_PTR,
 						IARG_PTR, func_name,
 						IARG_END);
 					break;
+				case(LOG_IOC_APINAME_IF_NOT_SELF):
+					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)LogFunctionIfNotSelfByName,
+						IARG_REG_VALUE, REG_STACK_PTR,
+						IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+						IARG_PTR, func_name,
+						IARG_END);
+
 				default: break;
 				}
 				// Close the routine
 				RTN_Close(rtn);
 			}
 		}
+
 	}
 
 
@@ -481,6 +515,15 @@ namespace Functions {
 }
 
 /* Special-purpose logging hooks */
+
+VOID LogFunctionIfNotSelfByName(ADDRINT esp, W::HANDLE hProcess, const char* name) {
+	if (hProcess == (W::HANDLE)-1) return;
+	CHECK_ESP_RETURN_ADDRESS(esp);
+	if (!Functions::apiCallCounts[name]++) { // only on first invocation
+		logInfo->logMisc(name);
+	}
+}
+
 VOID LogFunctionByName(ADDRINT esp, const char* name) {
 	CHECK_ESP_RETURN_ADDRESS(esp);
 	if (!Functions::apiCallCounts[name]++) { // only on first invocation
