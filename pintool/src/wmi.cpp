@@ -19,35 +19,43 @@ VOID WMI_Patch(iclock_t &clock, W::LPCWSTR query, W::VARIANT* var, LoggingInfo* 
 		GET_STR_TO_UPPER(query, value, PATH_BUFSIZE);
 
 		char logName[256] = "WMI-Get ";
-		strcat(logName, value);
-		logModule->logBypass(clock, logName); // TODO why both?
-		logInfo->logBypass(clock, logName);
+
+		// TODO FILENAME case?
 
 		if (strstr(value, "NUMBEROFCORES") != NULL) {
-			//set 8 cores in the machine
+			//set N cores in the machine
 			var->n1.n2.n3.uintVal = BP_NUMCORES;
+			strcat(logName, value);
+			logInfo->logBypass(clock, logName);
 		}
 
 		else if (strstr(value, "SIZE") != NULL) {
 			//set new size of HDD
 			var->n1.n2.n3.llVal = (BP_DISKSIZE * (1024LL * (1024LL * (1024LL))));
+			strcat(logName, value);
+			logInfo->logBypass(clock, logName);
 		}
 
 		else if (strstr(value, "DEVICEID") != NULL) {
 			//set the new device ID
-			memset(var->n1.n2.n3.bstrVal, 0, wcslen(var->n1.n2.n3.bstrVal) * 2);
-			wcscpy(var->n1.n2.n3.bstrVal, BP_ACPIDEV);
+			if (wcsstr(var->n1.n2.n3.bstrVal, L"PCI\\VEN_80EE&DEV_CAFE")) {
+				memset(var->n1.n2.n3.bstrVal, 0, wcslen(var->n1.n2.n3.bstrVal) * 2);
+				wcscpy(var->n1.n2.n3.bstrVal, BP_ACPIDEV);
+				sprintf(logName, "%s PCI\\VEN_80EE&DEV_CAFE", value);
+				logInfo->logBypass(clock, logName);
+			}
 		}
 
 		else if (strstr(value, "MACADDRESS") != NULL) {
 			//set new MAC Address
 			memset(var->n1.n2.n3.bstrVal, 0, wcslen(var->n1.n2.n3.bstrVal) * 2);
 			wcscpy(var->n1.n2.n3.bstrVal, BP_MACADDR);
+			strcat(logName, value);
+			logInfo->logBypass(clock, logName);
 		}
 
 		else if (strstr(value, "MUILANGUAGES") != NULL) {
-			//set new MAC Address
-			//clean NTLog file
+			//MUI language string
 			W::HMODULE hmod = W::LoadLibraryA("OleAut32.dll");
 			*(W::FARPROC*)&pSafeArrayAccessData = W::GetProcAddress(hmod, "SafeArrayAccessData");
 			*(W::FARPROC*)&pSafeArrayGetLBound = W::GetProcAddress(hmod, "SafeArrayGetLBound");
@@ -64,7 +72,7 @@ VOID WMI_Patch(iclock_t &clock, W::LPCWSTR query, W::VARIANT* var, LoggingInfo* 
 				pSafeArrayGetUBound(saSources, 1, &upperBound);
 				W::LONG iLength = upperBound - lowerBound + 1;
 
-				// Iteare over our array of BTSR
+				// iterate over our array of BTSR
 				W::TCHAR* bstrItem;
 				for (W::LONG ix = 0; ix < iLength; ix++) {
 					pSafeArrayGetElement(saSources, &ix, (void*)&bstrItem);
@@ -77,6 +85,9 @@ VOID WMI_Patch(iclock_t &clock, W::LPCWSTR query, W::VARIANT* var, LoggingInfo* 
 
 						memset((char*)*pData, 0, strlen((char*)*pData));
 						PIN_SafeCopy((char*)*pData, BP_MUI, strlen(BP_MUI));
+
+						strcat(logName, value);
+						logInfo->logBypass(clock, logName);
 					}
 				}
 			}
@@ -109,6 +120,9 @@ VOID WMI_Patch(iclock_t &clock, W::LPCWSTR query, W::VARIANT* var, LoggingInfo* 
 					GET_WSTR_TO_UPPER(bstrItem, value1, PATH_BUFSIZE);
 
 					if (strcmp(value1, "VBOXVIDEO") == 0) {
+						sprintf(logName, "%s %s", value, value);
+						logInfo->logBypass(clock, logName);
+
 						long* pData = (long*)saSources->pvData + ix;
 
 						memset((char*)*pData, 0, strlen((char*)*pData));

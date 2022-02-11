@@ -58,6 +58,9 @@ namespace State {
 		ADDRINT* lpMemoryInformations;
 		ADDRINT* lpSystemInformations;
 		W::PBYTE lpDeviceRegistryBuffer;
+		W::DWORD lpDeviceRegistryBufferSize;
+		ADDRINT  lpLoadLibraryArg;
+
 		struct moduleFileNameInformations {
 			W::LPSTR lpModuleName;
 			W::DWORD lpNSize;

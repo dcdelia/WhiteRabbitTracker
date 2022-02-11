@@ -60,6 +60,8 @@ namespace SYSHOOKS {
 	W::LARGE_INTEGER NtWFSO_timeout;
 
 	VOID NtWaitForSingleObject_entry(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std) {
+		if (!BYPASS(BP_ICMPSENDECHO)) return;
+
 		// TODO for now it will be Win7-WOW64-specific
 		ADDRINT *esp = (ADDRINT*)PIN_GetContextReg(ctx, REG_STACK_PTR);
 		
@@ -351,15 +353,19 @@ namespace SYSHOOKS {
 
 				if (spi->ImageName.Buffer != nullptr) {
 					char value[PATH_BUFSIZE];
+					memset(value, 0, PATH_BUFSIZE); // see print below
 					GET_STR_TO_UPPER(spi->ImageName.Buffer, value, PATH_BUFSIZE);
 					if (BYPASS(BP_NTQUERYSYSINFO_5)) {
 						if (HiddenElements::shouldHideProcessStr(value)) {
-							logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemProcessInformation");
+							char logName[PATH_BUFSIZE];
+							sprintf(logName, "NtQSI-SystemProcessInformation %s", value);
+							logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 							PIN_SafeCopy(spi->ImageName.Buffer, BP_FAKEPROCESSW, sizeof(BP_FAKEPROCESSW));
 						}
 					}
 					uint8_t color = GET_TAINT_COLOR(TT_NTQSI_PROCESSINFO);
 					if (color) {
+						// TODO selectivity?
 						logHookId(ctx, "NTQSI-SystemProcessInformation", (ADDRINT)spi, s);
 						TAINT_TAG_REG(ctx, GPR_EAX, color, color, color, color);
 
@@ -471,14 +477,14 @@ namespace SYSHOOKS {
 					// Scan entire bios in order to find vbox strings
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VBox");
 					for (size_t i = 0; i < info->TableBufferLength - sizeVbox; i++) {
-						if (memcmp(info->TableBuffer + i, vbox, sizeVbox) == 0 && _knobBypass) {
+						if (memcmp(info->TableBuffer + i, vbox, sizeVbox) == 0) {
 							PIN_SafeCopy(info->TableBuffer + i, escape, sizeof(escape));
 						}
 						else if (memcmp(info->TableBuffer + i, vbox2, sizeVbox2) == 0 ||
-							memcmp(info->TableBuffer + i, vbox3, sizeVbox3) == 0 && _knobBypass) {
+							memcmp(info->TableBuffer + i, vbox3, sizeVbox3) == 0) {
 							PIN_SafeCopy(info->TableBuffer + i, escape2, sizeof(escape2));
 						}
-						else if (memcmp(info->TableBuffer + i, vbox4, sizeVbox4) == 0 && _knobBypass) {
+						else if (memcmp(info->TableBuffer + i, vbox4, sizeVbox4) == 0) {
 							PIN_SafeCopy(info->TableBuffer + i, escape3, sizeof(escape3));
 						}
 					}
@@ -493,10 +499,10 @@ namespace SYSHOOKS {
 
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VMWare");
 					for (size_t i = 0; i < info->TableBufferLength - vmwareSize; i++) {
-						if (memcmp(info->TableBuffer + i, vmware, vmwareSize) == 0 && _knobBypass) {
+						if (memcmp(info->TableBuffer + i, vmware, vmwareSize) == 0) {
 							PIN_SafeCopy(info->TableBuffer + i, escape4, sizeof(escape4));
 						}
-						else if (memcmp(info->TableBuffer + i, vmware2, vmwareSize2) == 0 && _knobBypass) {
+						else if (memcmp(info->TableBuffer + i, vmware2, vmwareSize2) == 0) {
 							PIN_SafeCopy(info->TableBuffer + i, escape5, sizeof(escape5));
 						}
 					}

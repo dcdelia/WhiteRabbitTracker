@@ -1,5 +1,6 @@
 #include "specialInstructions.h"
 #include "taint.h"
+#include "bypass.h"
 
 // Spill a register in Pin for keeping a shadow FPU IP
 REG spilledFpu;
@@ -276,7 +277,7 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
 		}
 	}
-	if (_knobBypass) {
+	if (BYPASS(BP_CPUID)) {
 		// Change cpuid results (EBX, ECX, EDX)
 		PIN_SetContextReg(ctxt, REG_GBX, _ebx);
 		PIN_SetContextReg(ctxt, REG_GCX, _ecx);
@@ -293,7 +294,7 @@ void SpecialInstructionsHandler::AlterRdtscValues(ADDRINT ip, CONTEXT * ctxt, AD
 	// Handle and bypass the instruction
 	State::globalState* gs = State::getGlobalState();
 	SpecialInstructionsHandler *classHandler = SpecialInstructionsHandler::getInstance();
-	if (_knobBypass) {
+	if (BYPASS(BP_RDTSC)) {
 		gs->_timeInfo._edx = (gs->_timeInfo._edx_eax & 0xffffffff00000000ULL) >> 32; // Most significant 32
 		gs->_timeInfo._edx_eax += gs->_timeInfo.sleepMs; // Add to result ms of previous sleep call
 		gs->_timeInfo._eax = gs->_timeInfo._edx_eax & 0x00000000ffffffffULL; // Less significant 32
@@ -320,7 +321,7 @@ void SpecialInstructionsHandler::Int2dCalled(const CONTEXT* ctxt, ADDRINT cur_ei
 	// Get class instance to access objects
 	ExceptionHandler *eh = ExceptionHandler::getInstance();
 	// Insert and call exception on int 2d
-	if (_knobBypass) {
+	if (BYPASS(BP_INT2D)) {
 		eh->setExceptionToExecute(NTSTATUS_STATUS_BREAKPOINT);
 		classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "INT 0X2D");
 	}
@@ -350,7 +351,7 @@ ADDRINT SpecialInstructionsHandler::FPU_UpdateLastFpuIns(ADDRINT addr) {
 void SpecialInstructionsHandler::InEaxEdxCalledAlterValueEbx(CONTEXT* ctxt, ADDRINT cur_eip) {
 	CHECK_EIP_ADDRESS(cur_eip);
 	SpecialInstructionsHandler *classHandler = SpecialInstructionsHandler::getInstance();
-	if (_knobBypass) {
+	if (BYPASS(BP_IN_EAX_DX)) {
 		// Change return value (eax, ebx) of the instruction 'in eax, dx'
 		ADDRINT _eax = 0;
 		ADDRINT _ebx = 0;
@@ -372,8 +373,8 @@ void SpecialInstructionsHandler::InEaxEdxCalledAlterValueEbx(CONTEXT* ctxt, ADDR
 VOID SpecialInstructionsHandler::KillObsidiumDiskDriveCheck(CONTEXT* ctxt) {
 	ADDRINT _eax;
 	PIN_GetContextRegval(ctxt, REG_GAX, reinterpret_cast<UINT8*>(&_eax));
-	if (_knobBypass) {
-		*((ADDRINT*)_eax) = 0;
+	if (BYPASS(BP_OBSIDIUM_DRIVECHECK)) {
+		*((ADDRINT*)_eax) = 0; // TODO is this even ok with PIN's APIs? looks broken
 	}
 	// Taint the registers
 	uint8_t color = GET_TAINT_COLOR(TT_OBSIDIUM_DISK_DRIVE);
@@ -386,7 +387,7 @@ VOID SpecialInstructionsHandler::KillObsidiumDiskDriveCheck(CONTEXT* ctxt) {
 /* Function to handle the Obsidium pattern matching to avoid dead path   */
 /* ===================================================================== */
 VOID SpecialInstructionsHandler::KillObsidiumDeadPath(CONTEXT* ctxt) {
-	if (_knobBypass) {
+	if (BYPASS(BP_OBSIDIUM_DEADPATH)) {
 		PIN_SetContextReg(ctxt, REG_EAX, 0x7);
 	}
 }
