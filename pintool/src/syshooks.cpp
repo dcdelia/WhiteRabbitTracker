@@ -4,6 +4,7 @@
 #include "HiddenElements.h"
 #include "taint.h"
 #include "helper.h"
+#include "bypass.h"
 
 /* ============================================================================= */
 /* Define macro to get reference/copy clock to information from CONTEXT object   */
@@ -13,10 +14,13 @@ extern REG thread_ctx_ptr;
 
 namespace SYSHOOKS {
 
+	/* ===================================================================== */
+	/* Obtain where a ntdll syscall stub would return                        */
+	/* ===================================================================== */
 	static ADDRINT getRAfromNtdllStub(ADDRINT* esp) {
 		State::globalState* gs = State::getGlobalState();
 		ADDRINT addr = *esp;
-		if (addr < gs->ntdll_start || addr > gs->ntdll_end) return NULL;
+		if (addr < gs->ntdll_start || addr > gs->ntdll_end) return NULL; // direct syscall
 
 		uint8_t bytes[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 		PIN_SafeCopy(bytes, (void*)addr, 6);
@@ -95,6 +99,8 @@ namespace SYSHOOKS {
 	/* Handle the NtDelayExecution API                                       */
 	/* ===================================================================== */
 	VOID NtDelayexecution_entry(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std) {
+		if (!BYPASS(BP_NTDELAYEXEC)) return;
+
 		W::LARGE_INTEGER* li = (W::LARGE_INTEGER*)sc->arg1;
 		W::UINT ll = (-li->QuadPart) / 10000LL;
 		if (ll == 0 || ll > 1000000000)
@@ -135,20 +141,18 @@ namespace SYSHOOKS {
 		char value[PATH_BUFSIZE];
 		GET_STR_TO_UPPER(p->Buffer, value, PATH_BUFSIZE); 
 		apiOutputs->ntCreateFileBuffer = p->Buffer;
-		if (HiddenElements::shouldHideGenericFileNameStr(value)) {
-			if (_knobBypass) {
-				char logName[256] = "NtCreateFile ";
-				strcat(logName, value);
-				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
-				//VBOXGUEST pass for Obsidium anti-vm and anti-dbi
-				char* defaultGenericFilenames[] = { "VBOXGUEST", NULL };
-				if (lookupSubstring(value, defaultGenericFilenames) && mode == 1) {
-					apiOutputs->obsidiumCreateFile = true;
-				}
-				for (W::USHORT i = p->Length - 8; i < p->Length - 1; i += 2) {
-					memcpy((char*)p->Buffer + i, WSTR_CREATEFILE, sizeof(wchar_t));
-					PIN_SafeCopy((char*)p->Buffer + i, WSTR_CREATEFILE, sizeof(wchar_t));
-				}
+		if (BYPASS(BP_NTCREATEFILE) && HiddenElements::shouldHideGenericFileNameStr(value)) {
+			char logName[PATH_BUFSIZE] = "NtCreateFile ";
+			strcat(logName, value);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
+			//VBOXGUEST pass for Obsidium anti-vm and anti-dbi
+			char* defaultGenericFilenames[] = { "VBOXGUEST", NULL };
+			if (lookupSubstring(value, defaultGenericFilenames) && mode == 1) {
+				apiOutputs->obsidiumCreateFile = true;
+			}
+			for (W::USHORT i = p->Length - 8; i < p->Length - 1; i += 2) {
+				memcpy((char*)p->Buffer + i, WSTR_CREATEFILE, sizeof(wchar_t));
+				PIN_SafeCopy((char*)p->Buffer + i, WSTR_CREATEFILE, sizeof(wchar_t));
 			}
 		}
 	}
@@ -172,7 +176,7 @@ namespace SYSHOOKS {
 				logHookId(ctx, "NtCreateFile", (ADDRINT)handle, sizeof(W::HANDLE));
 				addTaintMemory(ctx, (ADDRINT)handle, sizeof(W::HANDLE), color, true, "NtCreateFile");
 			}
-			if (apiOutputs->obsidiumCreateFile && _knobBypass) {
+			if (apiOutputs->obsidiumCreateFile && BYPASS(BP_NTCREATEFILE)) {
 				PIN_SetContextReg(ctx, REG_GAX, -1);
 				apiOutputs->obsidiumCreateFile = false;
 			}
@@ -195,10 +199,10 @@ namespace SYSHOOKS {
 
 		char value[PATH_BUFSIZE];
 		GET_STR_TO_UPPER(path, value, PATH_BUFSIZE);
-		if (HiddenElements::shouldHideRegOpenKeyStr(value)) {
+		if (HiddenElements::shouldHideRegOpenKeyStr(value)) { // for sensitive keys only
 			// Free right handle
-			if (_knobBypass) {
-				char logName[256] = "NtOpenKey ";
+			if (BYPASS(BP_NTOPENKEY)) {
+				char logName[PATH_BUFSIZE] = "NtOpenKey ";
 				strcat(logName, value);
 				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 				W::CloseHandle(*khandle);
@@ -226,8 +230,8 @@ namespace SYSHOOKS {
 			PKEY_BASIC_INFORMATION str = (PKEY_BASIC_INFORMATION)sc->arg3;
 			char value[PATH_BUFSIZE];
 			GET_STR_TO_UPPER(str->Name, value, PATH_BUFSIZE);
-			if (HiddenElements::shouldHideReqQueryValueStr(value)) {
-				if (_knobBypass) {
+			if (HiddenElements::shouldHideReqQueryValueStr(value)) { // for sensitive keys only
+				if (BYPASS(BP_NTENUMKEY)) {
 					char logName[256] = "NtEnumerateKey ";
 					strcat(logName, value);
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
@@ -256,8 +260,8 @@ namespace SYSHOOKS {
 			if (query->Buffer != NULL) {
 				char value[PATH_BUFSIZE];
 				GET_STR_TO_UPPER(query->Buffer, value, PATH_BUFSIZE);
-				if (HiddenElements::shouldHideReqQueryValueStr(value)) {
-					if (_knobBypass) {
+				if (HiddenElements::shouldHideReqQueryValueStr(value)) { // for sensitive values only
+					if (BYPASS(BP_NTQUERYVALUEKEY)) {
 						char logName[256] = "NtQueryValueKey ";
 						strcat(logName, value);
 						logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
@@ -293,19 +297,19 @@ namespace SYSHOOKS {
 
 			if (ProcessInformationClass == ProcessDebugFlags) {
 				// Gives Pin away as a debugger
-				if (_knobBypass) {
+				if (BYPASS(BP_NTQUERYINFOPROC_31)) {
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugFlags");
 					*((W::ULONG*)ProcessInformation) = PROCESS_DEBUG_INHERIT;
 				}
 				uint8_t color = GET_TAINT_COLOR(TT_NTQIP_DEBUGFLAG);
 				if (color) {
-					logHookId(ctx, "NTQIP-ProcessDebugFlags", (ADDRINT)ProcessInformation, ProcessInformationLength);
+					logHookId(ctx, "NTQIP-ProcessDebugFlags-31", (ADDRINT)ProcessInformation, ProcessInformationLength);
 					addTaintMemory(ctx, (ADDRINT)ProcessInformation, ProcessInformationLength, color, true, "NTQIP-ProcessDebugFlags");
 				}
 			}			
 			else if (ProcessInformationClass == ProcessDebugObjectHandle) {
 				// Set return value to STATUS_PORT_NOT_SET
-				if (_knobBypass) {
+				if (BYPASS(BP_NTQUERYINFOPROC_30)) {
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugObjectHandle");
 					*((W::HANDLE*)ProcessInformation) = (W::HANDLE)0;
 					ADDRINT _eax = CODEFORSTATUSPORTNOTSET;
@@ -319,7 +323,7 @@ namespace SYSHOOKS {
 			}
 			else if (ProcessInformationClass == ProcessDebugPort) {
 				// Set debug port to null
-				if (_knobBypass) {
+				if (BYPASS(BP_NTQUERYINFOPROC_7)) {
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugPort");
 					*((W::HANDLE *)ProcessInformation) = (W::HANDLE)0;
 				}
@@ -348,9 +352,9 @@ namespace SYSHOOKS {
 				if (spi->ImageName.Buffer != nullptr) {
 					char value[PATH_BUFSIZE];
 					GET_STR_TO_UPPER(spi->ImageName.Buffer, value, PATH_BUFSIZE);
-					if (_knobBypass) {
-						logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemProcessInformation");
+					if (BYPASS(BP_NTQUERYSYSINFO_5)) {
 						if (HiddenElements::shouldHideProcessStr(value)) {
+							logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemProcessInformation");
 							PIN_SafeCopy(spi->ImageName.Buffer, BP_FAKEPROCESSW, sizeof(BP_FAKEPROCESSW));
 						}
 					}
@@ -359,6 +363,7 @@ namespace SYSHOOKS {
 						logHookId(ctx, "NTQSI-SystemProcessInformation", (ADDRINT)spi, s);
 						TAINT_TAG_REG(ctx, GPR_EAX, color, color, color, color);
 
+						// TODO why not a single operation?
 						addTaintMemory(ctx, (ADDRINT) & (spi->NextEntryOffset), sizeof(W::ULONG), color, true, "NTQSI-SystemProcessInformation");
 						addTaintMemory(ctx, (ADDRINT) & (spi->NumberOfThreads), sizeof(W::ULONG), color, true, "NTQSI-SystemProcessInformation");
 
@@ -433,7 +438,7 @@ namespace SYSHOOKS {
 						addTaintMemory(ctx, (ADDRINT)(pmi->Modules[i].FullPathName), len, color, true, "NTQSI-SystemModuleInformation");
 					}
 					for (size_t i = 0; i < len - 1; i++) {
-						if(_knobBypass)
+						if(BYPASS(BP_NTQUERYSYSINFO_11))
 							PIN_SafeCopy(tmpAddr + i, "a", sizeof(char));
 					}
 				}
@@ -446,52 +451,56 @@ namespace SYSHOOKS {
 				ADDRINT sizeIn = (W::ULONG)sc->arg2;
 				if (sizeOut > sizeIn) return;
 
-				// Virtualbox part
-				// different colors for each suspicious string
-				char vbox[] = { "VirtualBox" };
-				char vbox2[] = { "vbox" };
-				char vbox3[] = { "VBOX" };
-				char vbox4[] = { "Virtual Machine" };
-				char escape[] = { "aaaaaaaaaa" };
-				char escape2[] = { "aaaa" };
-				char escape3[] = { "aaaaaaa aaaaaaa" };
-				W::ULONG sizeVbox = (W::ULONG)Helper::_strlen_a(vbox);
-				W::ULONG sizeVbox2 = (W::ULONG)Helper::_strlen_a(vbox2);
-				W::ULONG sizeVbox3 = (W::ULONG)Helper::_strlen_a(vbox3);
-				W::ULONG sizeVbox4 = (W::ULONG)Helper::_strlen_a(vbox4);
-
 				PSYSTEM_FIRMWARE_TABLE_INFORMATION info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)sc->arg1;
-				// Scan entire bios in order to find vbox strings
-				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VBox");
-				for (size_t i = 0; i < info->TableBufferLength - sizeVbox; i++) {
-					if (memcmp(info->TableBuffer + i, vbox, sizeVbox) == 0 && _knobBypass) {
-						PIN_SafeCopy(info->TableBuffer + i, escape, sizeof(escape));
-					}
-					else if (memcmp(info->TableBuffer + i, vbox2, sizeVbox2) == 0 ||
-						memcmp(info->TableBuffer + i, vbox3, sizeVbox3) == 0 && _knobBypass) {
-						PIN_SafeCopy(info->TableBuffer + i, escape2, sizeof(escape2));
-					}
-					else if (memcmp(info->TableBuffer + i, vbox4, sizeVbox4) == 0 && _knobBypass) {
-						PIN_SafeCopy(info->TableBuffer + i, escape3, sizeof(escape3));
-					}
-				}
 
-				// Scan entire bios in order to find VMware string
-				char vmware[] = { "VMware" };
-				char vmware2[] = { "Virtual Machine" };
-				char escape4[] = { "aaaaaa" };
-				char escape5[] = { "aaaaaaa aaaaaaa" };
-				W::ULONG vmwareSize = (W::ULONG)Helper::_strlen_a(vmware);
-				W::ULONG vmwareSize2 = (W::ULONG)Helper::_strlen_a(vmware2);
+				if (BYPASS(BP_NTQUERYSYSINFO_76)) {
+					// Virtualbox part
+					// TODO? different colors for each suspicious string
+					char vbox[] = { "VirtualBox" };
+					char vbox2[] = { "vbox" };
+					char vbox3[] = { "VBOX" };
+					char vbox4[] = { "Virtual Machine" };
+					char escape[] = { "aaaaaaaaaa" };
+					char escape2[] = { "aaaa" };
+					char escape3[] = { "aaaaaaa aaaaaaa" };
+					W::ULONG sizeVbox = (W::ULONG)Helper::_strlen_a(vbox);
+					W::ULONG sizeVbox2 = (W::ULONG)Helper::_strlen_a(vbox2);
+					W::ULONG sizeVbox3 = (W::ULONG)Helper::_strlen_a(vbox3);
+					W::ULONG sizeVbox4 = (W::ULONG)Helper::_strlen_a(vbox4);
 
-				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VMWare");
-				for (size_t i = 0; i < info->TableBufferLength - vmwareSize; i++) {
-					if (memcmp(info->TableBuffer + i, vmware, vmwareSize) == 0 && _knobBypass) {
-						PIN_SafeCopy(info->TableBuffer + i, escape4, sizeof(escape4));
+					// Scan entire bios in order to find vbox strings
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VBox");
+					for (size_t i = 0; i < info->TableBufferLength - sizeVbox; i++) {
+						if (memcmp(info->TableBuffer + i, vbox, sizeVbox) == 0 && _knobBypass) {
+							PIN_SafeCopy(info->TableBuffer + i, escape, sizeof(escape));
+						}
+						else if (memcmp(info->TableBuffer + i, vbox2, sizeVbox2) == 0 ||
+							memcmp(info->TableBuffer + i, vbox3, sizeVbox3) == 0 && _knobBypass) {
+							PIN_SafeCopy(info->TableBuffer + i, escape2, sizeof(escape2));
+						}
+						else if (memcmp(info->TableBuffer + i, vbox4, sizeVbox4) == 0 && _knobBypass) {
+							PIN_SafeCopy(info->TableBuffer + i, escape3, sizeof(escape3));
+						}
 					}
-					else if (memcmp(info->TableBuffer + i, vmware2, vmwareSize2) == 0 && _knobBypass) {
-						PIN_SafeCopy(info->TableBuffer + i, escape5, sizeof(escape5));
+
+					// Scan entire bios in order to find VMware string
+					char vmware[] = { "VMware" };
+					char vmware2[] = { "Virtual Machine" };
+					char escape4[] = { "aaaaaa" };
+					char escape5[] = { "aaaaaaa aaaaaaa" };
+					W::ULONG vmwareSize = (W::ULONG)Helper::_strlen_a(vmware);
+					W::ULONG vmwareSize2 = (W::ULONG)Helper::_strlen_a(vmware2);
+
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VMWare");
+					for (size_t i = 0; i < info->TableBufferLength - vmwareSize; i++) {
+						if (memcmp(info->TableBuffer + i, vmware, vmwareSize) == 0 && _knobBypass) {
+							PIN_SafeCopy(info->TableBuffer + i, escape4, sizeof(escape4));
+						}
+						else if (memcmp(info->TableBuffer + i, vmware2, vmwareSize2) == 0 && _knobBypass) {
+							PIN_SafeCopy(info->TableBuffer + i, escape5, sizeof(escape5));
+						}
 					}
+
 				}
 
 				// Taint the table buffer
@@ -505,7 +514,8 @@ namespace SYSHOOKS {
 		else if (sc->arg0 == SystemKernelDebuggerInformation) {
 			PSYSTEM_KERNEL_DEBUGGER_INFORMATION skdi = (PSYSTEM_KERNEL_DEBUGGER_INFORMATION)sc->arg1;
 			W::ULONG s = (W::ULONG)sc->arg2;
-			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemKernelDebuggerInformation");
+			// No bypass needed here (see BluePill for reference)
+			//logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemKernelDebuggerInformation");
 			uint8_t color = GET_TAINT_COLOR(TT_NTQSI_KERNELINFO);
 			if (color) {
 				logHookId(ctx, "NtQSI-SystemKernelDebuggerInformation", (ADDRINT)skdi, s);
@@ -528,8 +538,8 @@ namespace SYSHOOKS {
 		GET_STR_TO_UPPER(p->Buffer, value, PATH_BUFSIZE); 
 		apiOutputs->ntQueryAttributesFileBuffer = p->Buffer;
 
-		if (HiddenElements::shouldHideGenericFileNameStr(value)) {
-			char logName[256] = "NtQueryAttributesFile ";
+		if (BYPASS(BP_NTQUERYATTRFILE) && HiddenElements::shouldHideGenericFileNameStr(value)) {
+			char logName[PATH_BUFSIZE] = "NtQueryAttributesFile ";
 			strcat(logName, value);
 			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 			for (W::USHORT i = p->Length - 8; i < p->Length - 1; i += 2) {
@@ -551,9 +561,10 @@ namespace SYSHOOKS {
 		GET_STR_TO_UPPER(apiOutputs->ntQueryAttributesFileBuffer, value, PATH_BUFSIZE);
 
 		uint8_t color = GET_TAINT_COLOR(TT_NTQUERYATTRIBUTESFILE);
-		if (color && HiddenElements::shouldHideGenericFileNameStr(value)) {
+		if (color && HiddenElements::shouldHideGenericFileNameStr(value)) { // taint sensitive files only
 			TAINT_TAG_REG(ctx, GPR_EAX, color, color, color, color);
 			logHookId(ctx, "NtQueryAttributesFile", (ADDRINT)basicInfo, sizeof(W::FILE_BASIC_INFO));
+			
 			//Tainting the whole FILE_BASIC_INFO data structure
 			addTaintMemory(ctx, (ADDRINT) & (basicInfo->CreationTime.HighPart), sizeof(W::LONG), color, true, "NtQueryAttributesFile");
 			addTaintMemory(ctx, (ADDRINT) & (basicInfo->CreationTime.LowPart), sizeof(W::DWORD), color, true, "NtQueryAttributesFile");
@@ -592,7 +603,7 @@ namespace SYSHOOKS {
 
 		char value[PATH_BUFSIZE] = { 0 };
 
-		if (_knobBypass) {
+		if (BYPASS(BP_NTUSERFINDWIND)) {
 			// Bypass the first path
 			if (path1 != NULL && path1->Buffer != NULL) {
 				GET_STR_TO_UPPER(path1->Buffer, value, PATH_BUFSIZE);

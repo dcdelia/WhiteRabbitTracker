@@ -3,7 +3,7 @@
 /* ================================================================== */
 #pragma once
 #include "main.h"
-
+#include "bypass.h"
 
 /* ================================================================== */
 /* Global variables                                                   */ 
@@ -26,6 +26,8 @@ SpecialInstructionsHandler* specialInstructionsHandlerInfo;
 TLS_KEY tls_key = INVALID_TLS_KEY;
 // Policy for taint tracking
 uint8_t policyForTT[TT_TOTAL_SIZE];
+// Policy for bypasses
+uint8_t policyForBP[BP_TOTAL_SIZE];
 
 /* ================================================================== */
 /* Knobs definitions                                                  */
@@ -373,6 +375,18 @@ VOID setupTaintTrackingPolicy() {
 
 
 /* ===================================================================== */
+/* Method to initialize evasion bypass configuration                     */
+/* ===================================================================== */
+VOID setupBypassPolicy() {
+	if (!_knobBypass) return;
+
+	// default: enable all
+	memset(policyForBP, 1, BP_TOTAL_SIZE);
+
+	// TODO read from file what to skip (or set)
+}
+
+/* ===================================================================== */
 /* Print Help Message (usage message)                                    */
 /* ===================================================================== */
 INT32 Usage() {
@@ -411,8 +425,9 @@ int main(int argc, char * argv[]) {
 	State::globalState* gs = State::getGlobalState();
 	gs->logInfo = &logInfo;
 
-	// Initialize elements to be hidden
+	// Initialize elements to be hidden and enable hooks for bypasses
 	HiddenElements::initializeHiddenStuff();
+	setupBypassPolicy();
 
 	// Initialize taint hooks
 	setupTaintTrackingPolicy();

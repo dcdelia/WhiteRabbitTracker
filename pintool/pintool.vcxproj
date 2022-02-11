@@ -23,7 +23,7 @@
     <RootNamespace>pintool</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <ProjectName>WhiteRabbitTracker</ProjectName>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -48,7 +48,7 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CLRSupport>false</CLRSupport>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -183,7 +183,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>
       </DebugInformationFormat>
-      <DisableSpecificWarnings>4005;4530;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4005;4530;5208;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ForcedIncludeFiles>include/msvc_compat.h</ForcedIncludeFiles>
       <ShowIncludes>false</ShowIncludes>
     </ClCompile>
@@ -270,7 +270,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <DisableSpecificWarnings>4005;4530;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4005;4530;5208;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ForcedIncludeFiles>include/msvc_compat.h</ForcedIncludeFiles>
       <ShowIncludes>false</ShowIncludes>
       <Optimization>Disabled</Optimization>
@@ -334,6 +334,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\bufferLoggingInfo.h" />
+    <ClInclude Include="src\bypass.h" />
     <ClInclude Include="src\callStack.h" />
     <ClInclude Include="src\disassembler.h" />
     <ClInclude Include="src\exceptionHandler.h" />
