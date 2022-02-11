@@ -67,7 +67,7 @@ public:
 	/* ===================================================================== */
 	/* Log a new tainted branch                                              */
 	/* ===================================================================== */
-	void logTaintedBranch(ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash);
+	void logTaintedBranch(uint32_t clock1, uint32_t clock2, ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash);
 	/* ===================================================================== */
 	/* Log any miscellaneous info                                            */
 	/* ===================================================================== */

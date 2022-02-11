@@ -167,8 +167,9 @@ typedef struct {
 /* thread context definition */
 typedef struct {
 	vcpu_ctx_t	vcpu;		/* VCPU context */
+	uint32_t clock1, clock2;	/* event ordering */
 	syscall_ctx_t	syscall_ctx;	/* syscall context */
-	void		*uval;		/* local storage */
+	//void		*uval;		/* local storage */
 	taint_thread_info ttinfo;	/* DCD */
 } thread_ctx_t;
 
