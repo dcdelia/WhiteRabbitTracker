@@ -124,7 +124,7 @@ void LoggingInfo::logException(const ADDRINT addrFrom, std::string reason) {
 /* ===================================================================== */
 /* Log a new bypassed instruction/API                                    */
 /* ===================================================================== */
-void LoggingInfo::logBypass(std::string bypassIdentifier) {
+void LoggingInfo::logBypass(iclock_t &clock, std::string bypassIdentifier) {
 	// Check if the file exist
 	if (!createFile()) {
 		return;
@@ -132,7 +132,7 @@ void LoggingInfo::logBypass(std::string bypassIdentifier) {
 	// Write the new exception with relative previous address
 	m_traceFile
 		<< "[BYPASS] "
-		//<< std::hex << clock1 << " " << clock2 << " "
+		<< std::hex << clock.c1 << " " << clock.c2 << " "
 		<< bypassIdentifier
 		<< std::endl;
 	// Flush the file
@@ -142,13 +142,13 @@ void LoggingInfo::logBypass(std::string bypassIdentifier) {
 /* ===================================================================== */
 /* Log a new tainted branch                                              */
 /* ===================================================================== */
-void LoggingInfo::logTaintedBranch(uint32_t clock1, uint32_t clock2, ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash) {
+void LoggingInfo::logTaintedBranch(iclock_t &clock, ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash) {
 	// Check if the file exist
 	if (!createFile()) {
 		return;
 	}
 	char buf[1024]; 
-	sprintf(buf, "%x %x 0x%08x %s 0x%08x", clock1, clock2, addr, ins.c_str(), hash);
+	sprintf(buf, "%x %x 0x%08x %s 0x%08x", clock.c1, clock.c2, addr, ins.c_str(), hash);
 	// Write the new tainted branch with the relative information
 	m_traceFile
 		<< "[TAINTED_BRANCH] "

@@ -29,4 +29,4 @@ namespace W {
 #define BP_MACADDR		L"06:02:27:9C:BB:27"	/* consistency with BP_MAC_VENDOR? :) */
 #define BP_MUI			"it-IT"					/* MUI language string	*/
 
-VOID WMI_Patch(W::LPCWSTR query, W::VARIANT* enumerator, LoggingInfo* logInfo);
+VOID WMI_Patch(iclock_t& clock, W::LPCWSTR query, W::VARIANT* enumerator, LoggingInfo* logInfo);

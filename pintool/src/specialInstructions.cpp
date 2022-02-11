@@ -22,6 +22,12 @@ itreenode_t* node = itree_search(gs->dllRangeITree, eip_address); \
 if(node != NULL) return; \
 } while (0)
 
+/* ============================================================================= */
+/* Define macro to get reference/copy clock to information from CONTEXT object   */
+/* ============================================================================= */
+extern REG thread_ctx_ptr;
+#define GET_INTERNAL_CLOCK(ctx) (((thread_ctx_t*)PIN_GetContextReg(ctx, thread_ctx_ptr))->clock)
+
 /* ===================================================================== */
 /* constructor for singleton object                                      */
 /* ===================================================================== */
@@ -224,7 +230,7 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 		UINT32 mask = 0xFFFFFFFFULL;
 		_ecx &= (mask >> 1);
 		if ((*cpuidCount) <= MAX_CPUID)
-			classHandler->logInfo->logBypass("CPUID 0x1");
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x1");
 		
 		if (color) {
 			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color); // very high load
@@ -238,7 +244,7 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 		_ecx = 0x0ULL;
 		_edx = 0x0ULL;
 		if ((*cpuidCount) <= MAX_CPUID) // very high load
-			classHandler->logInfo->logBypass("CPUID 0x4");
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x4");
 		if (color) {
 			TAINT_TAG_REG(ctxt, GPR_EBX, color, color, color, color); // very high load
 			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color); // very high load
@@ -248,21 +254,21 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 	}
 	else if (gs->cpuid_eax == 0x80000000) {
 		if ((*cpuidCount) <= MAX_CPUID) 
-			classHandler->logInfo->logBypass("CPUID 0x80");
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x80");
 		if (color) {
 			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
 		}
 	}
 	else if (gs->cpuid_eax == 0x80000001) {
 		if ((*cpuidCount) <= MAX_CPUID) 
-			classHandler->logInfo->logBypass("CPUID 0x81");
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x81");
 		if (color) {
 			TAINT_TAG_REG(ctxt, GPR_EAX, color, color, color, color);
 		}
 	}
 	else if (gs->cpuid_eax >= 0x80000002 && gs->cpuid_eax <= 0x80000004) {
 		if ((*cpuidCount) <= MAX_CPUID)
-			classHandler->logInfo->logBypass("CPUID 0x82+");
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x82+");
 		if (color) {
 			TAINT_TAG_REG(ctxt, GPR_EBX, color, color, color, color);
 			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color);
@@ -296,7 +302,7 @@ void SpecialInstructionsHandler::AlterRdtscValues(ADDRINT ip, CONTEXT * ctxt, AD
 		PIN_SetContextReg(ctxt, REG_GAX, gs->_timeInfo._eax);
 		PIN_SetContextReg(ctxt, REG_GDX, gs->_timeInfo._edx);
 		if((*rdtscCount) <= MAX_RDTSC) // very high load
-			classHandler->logInfo->logBypass("RDTSC"); 
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "RDTSC");
 	}
 	// Taint the registers (very high load)
 	uint8_t color = GET_TAINT_COLOR(TT_RDTSC);
@@ -316,7 +322,7 @@ void SpecialInstructionsHandler::Int2dCalled(const CONTEXT* ctxt, ADDRINT cur_ei
 	// Insert and call exception on int 2d
 	if (_knobBypass) {
 		eh->setExceptionToExecute(NTSTATUS_STATUS_BREAKPOINT);
-		classHandler->logInfo->logBypass("INT 0X2D");
+		classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "INT 0X2D");
 	}
 }
 
@@ -350,7 +356,7 @@ void SpecialInstructionsHandler::InEaxEdxCalledAlterValueEbx(CONTEXT* ctxt, ADDR
 		ADDRINT _ebx = 0;
 		PIN_SetContextReg(ctxt, REG_GAX, _eax);
 		PIN_SetContextReg(ctxt, REG_GBX, _ebx);
-		classHandler->logInfo->logBypass("IN EAX, DX");
+		classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "IN EAX, DX");
 	}
 	// Taint the registers
 	uint8_t color = GET_TAINT_COLOR(TT_IN);

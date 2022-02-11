@@ -164,10 +164,16 @@ typedef struct {
 /* 	ADDRINT errno; */		/* error code */
 } syscall_ctx_t;
 
+
+/* internal clock (meaning of c1 and c2 is user-defined) */
+typedef struct {
+	uint32_t c1, c2; 
+} iclock_t;
+
 /* thread context definition */
 typedef struct {
 	vcpu_ctx_t	vcpu;		/* VCPU context */
-	uint32_t clock1, clock2;	/* event ordering */
+	iclock_t	clock;		/* event ordering */
 	syscall_ctx_t	syscall_ctx;	/* syscall context */
 	//void		*uval;		/* local storage */
 	taint_thread_info ttinfo;	/* DCD */

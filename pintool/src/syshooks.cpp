@@ -5,6 +5,12 @@
 #include "taint.h"
 #include "helper.h"
 
+/* ============================================================================= */
+/* Define macro to get reference/copy clock to information from CONTEXT object   */
+/* ============================================================================= */
+extern REG thread_ctx_ptr;
+#define GET_INTERNAL_CLOCK(ctx) (((thread_ctx_t*)PIN_GetContextReg(ctx, thread_ctx_ptr))->clock)
+
 namespace SYSHOOKS {
 
 	static ADDRINT getRAfromNtdllStub(ADDRINT* esp) {
@@ -133,7 +139,7 @@ namespace SYSHOOKS {
 			if (_knobBypass) {
 				char logName[256] = "NtCreateFile ";
 				strcat(logName, value);
-				logModule->logBypass(logName);
+				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 				//VBOXGUEST pass for Obsidium anti-vm and anti-dbi
 				char* defaultGenericFilenames[] = { "VBOXGUEST", NULL };
 				if (lookupSubstring(value, defaultGenericFilenames) && mode == 1) {
@@ -194,7 +200,7 @@ namespace SYSHOOKS {
 			if (_knobBypass) {
 				char logName[256] = "NtOpenKey ";
 				strcat(logName, value);
-				logModule->logBypass(logName);
+				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 				W::CloseHandle(*khandle);
 				*khandle = (W::HANDLE) - 1;
 				ADDRINT _eax = CODEFORINVALIDHANDLE;
@@ -224,7 +230,7 @@ namespace SYSHOOKS {
 				if (_knobBypass) {
 					char logName[256] = "NtEnumerateKey ";
 					strcat(logName, value);
-					logModule->logBypass(logName);
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 					for (W::USHORT i = 0; i < str->NameLength - 1; i += 2) {
 						PIN_SafeCopy((char*)str->Name + i, WSTR_REGKEYORVAL, sizeof(wchar_t));
 					}
@@ -254,7 +260,7 @@ namespace SYSHOOKS {
 					if (_knobBypass) {
 						char logName[256] = "NtQueryValueKey ";
 						strcat(logName, value);
-						logModule->logBypass(logName);
+						logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 						for (W::USHORT i = 0; i < query->Length * 2 - 1; i += 2) {
 							PIN_SafeCopy((char*)str + i, WSTR_REGKEYORVAL, sizeof(wchar_t));
 						}
@@ -288,7 +294,7 @@ namespace SYSHOOKS {
 			if (ProcessInformationClass == ProcessDebugFlags) {
 				// Gives Pin away as a debugger
 				if (_knobBypass) {
-					logModule->logBypass("NTQIP-ProcessDebugFlags");
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugFlags");
 					*((W::ULONG*)ProcessInformation) = PROCESS_DEBUG_INHERIT;
 				}
 				uint8_t color = GET_TAINT_COLOR(TT_NTQIP_DEBUGFLAG);
@@ -300,7 +306,7 @@ namespace SYSHOOKS {
 			else if (ProcessInformationClass == ProcessDebugObjectHandle) {
 				// Set return value to STATUS_PORT_NOT_SET
 				if (_knobBypass) {
-					logModule->logBypass("NTQIP-ProcessDebugObjectHandle");
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugObjectHandle");
 					*((W::HANDLE*)ProcessInformation) = (W::HANDLE)0;
 					ADDRINT _eax = CODEFORSTATUSPORTNOTSET;
 					PIN_SetContextReg(ctx, REG_GAX, _eax);
@@ -314,7 +320,7 @@ namespace SYSHOOKS {
 			else if (ProcessInformationClass == ProcessDebugPort) {
 				// Set debug port to null
 				if (_knobBypass) {
-					logModule->logBypass("NTQIP-ProcessDebugPort");
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugPort");
 					*((W::HANDLE *)ProcessInformation) = (W::HANDLE)0;
 				}
 			}
@@ -343,7 +349,7 @@ namespace SYSHOOKS {
 					char value[PATH_BUFSIZE];
 					GET_STR_TO_UPPER(spi->ImageName.Buffer, value, PATH_BUFSIZE);
 					if (_knobBypass) {
-						logModule->logBypass("NtQSI-SystemProcessInformation");
+						logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemProcessInformation");
 						if (HiddenElements::shouldHideProcessStr(value)) {
 							PIN_SafeCopy(spi->ImageName.Buffer, BP_FAKEPROCESSW, sizeof(BP_FAKEPROCESSW));
 						}
@@ -456,7 +462,7 @@ namespace SYSHOOKS {
 
 				PSYSTEM_FIRMWARE_TABLE_INFORMATION info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)sc->arg1;
 				// Scan entire bios in order to find vbox strings
-				logModule->logBypass("NtQSI-SystemFirmwareTableInformation VBox");
+				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VBox");
 				for (size_t i = 0; i < info->TableBufferLength - sizeVbox; i++) {
 					if (memcmp(info->TableBuffer + i, vbox, sizeVbox) == 0 && _knobBypass) {
 						PIN_SafeCopy(info->TableBuffer + i, escape, sizeof(escape));
@@ -478,7 +484,7 @@ namespace SYSHOOKS {
 				W::ULONG vmwareSize = (W::ULONG)Helper::_strlen_a(vmware);
 				W::ULONG vmwareSize2 = (W::ULONG)Helper::_strlen_a(vmware2);
 
-				logModule->logBypass("NtQSI-SystemFirmwareTableInformation VMWare");
+				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemFirmwareTableInformation VMWare");
 				for (size_t i = 0; i < info->TableBufferLength - vmwareSize; i++) {
 					if (memcmp(info->TableBuffer + i, vmware, vmwareSize) == 0 && _knobBypass) {
 						PIN_SafeCopy(info->TableBuffer + i, escape4, sizeof(escape4));
@@ -499,7 +505,7 @@ namespace SYSHOOKS {
 		else if (sc->arg0 == SystemKernelDebuggerInformation) {
 			PSYSTEM_KERNEL_DEBUGGER_INFORMATION skdi = (PSYSTEM_KERNEL_DEBUGGER_INFORMATION)sc->arg1;
 			W::ULONG s = (W::ULONG)sc->arg2;
-			logModule->logBypass("NtQSI-SystemKernelDebuggerInformation");
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQSI-SystemKernelDebuggerInformation");
 			uint8_t color = GET_TAINT_COLOR(TT_NTQSI_KERNELINFO);
 			if (color) {
 				logHookId(ctx, "NtQSI-SystemKernelDebuggerInformation", (ADDRINT)skdi, s);
@@ -525,7 +531,7 @@ namespace SYSHOOKS {
 		if (HiddenElements::shouldHideGenericFileNameStr(value)) {
 			char logName[256] = "NtQueryAttributesFile ";
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 			for (W::USHORT i = p->Length - 8; i < p->Length - 1; i += 2) {
 				PIN_SafeCopy((char*)p->Buffer + i, WSTR_FILE, sizeof(wchar_t));
 			}
@@ -593,7 +599,7 @@ namespace SYSHOOKS {
 				if (HiddenElements::shouldHideWindowStr(value)) {
 					char logName[256] = "NtUserFindWindow ";
 					strcat(logName, value);
-					logModule->logBypass(logName);
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 					ADDRINT _eax = 0;
 					PIN_SetContextReg(ctx, REG_GAX, _eax);
 				}
@@ -606,7 +612,7 @@ namespace SYSHOOKS {
 				if (HiddenElements::shouldHideWindowStr(value)) {
 					char logName[256] = "NtUserFindWindow ";
 					strcat(logName, value);
-					logModule->logBypass(logName);					
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);					
 					ADDRINT _eax = 0;
 					PIN_SetContextReg(ctx, REG_GAX, _eax);
 				}

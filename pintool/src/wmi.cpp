@@ -7,7 +7,7 @@ static W::HRESULT(WINAPI* pSafeArrayGetLBound)(W::SAFEARRAY* psa, UINT nDim, W::
 static W::HRESULT(WINAPI* pSafeArrayGetUBound)(W::SAFEARRAY* psa, UINT nDim, W::LONG* plUbound);
 static W::HRESULT(WINAPI* pSafeArrayGetElement)(W::SAFEARRAY* psa, W::LONG* rgIndices, void* pv);
 
-VOID WMI_Patch(W::LPCWSTR query, W::VARIANT* var, LoggingInfo* logInfo) {
+VOID WMI_Patch(iclock_t &clock, W::LPCWSTR query, W::VARIANT* var, LoggingInfo* logInfo) {
 
 	// Get the data from the query
 	if (var == NULL) 
@@ -20,8 +20,8 @@ VOID WMI_Patch(W::LPCWSTR query, W::VARIANT* var, LoggingInfo* logInfo) {
 
 		char logName[256] = "WMI-Get ";
 		strcat(logName, value);
-		logModule->logBypass(logName);
-		logInfo->logBypass(logName);
+		logModule->logBypass(clock, logName); // TODO why both?
+		logInfo->logBypass(clock, logName);
 
 		if (strstr(value, "NUMBEROFCORES") != NULL) {
 			//set 8 cores in the machine

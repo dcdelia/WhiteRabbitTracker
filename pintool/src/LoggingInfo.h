@@ -4,6 +4,8 @@
 #include <iostream>
 #include <fstream>
 
+#include "libdft/libdft_api.h" // for iclock_t
+
 #define MAIN_LOG_NAME "profile.log"
 #define CALLSTACK_LOG_NAME "callstack.log"
 
@@ -63,11 +65,11 @@ public:
 	/* ===================================================================== */
 	/* Log a new bypassed instruction/API                                    */
 	/* ===================================================================== */
-	void logBypass(std::string bypassIdentifier);
+	void logBypass(iclock_t& clock, std::string bypassIdentifier);
 	/* ===================================================================== */
 	/* Log a new tainted branch                                              */
 	/* ===================================================================== */
-	void logTaintedBranch(uint32_t clock1, uint32_t clock2, ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash);
+	void logTaintedBranch(iclock_t &clock, ADDRINT addr, ADDRINT targetAddress, std::string ins, ADDRINT hash);
 	/* ===================================================================== */
 	/* Log any miscellaneous info                                            */
 	/* ===================================================================== */

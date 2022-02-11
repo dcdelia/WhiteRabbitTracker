@@ -73,21 +73,21 @@ VOID GetAdaptersInfoExit(CONTEXT* ctx, ADDRINT ret, ADDRINT esp);
 VOID EnumDisplaySettingsEntry(W::LPCTSTR* devName, CONTEXT* ctx);
 VOID SetupDiGetDeviceRegistryPropertyHookEntry(W::PBYTE* buffer);
 VOID SetupDiGetDeviceRegistryPropertyHookExit(CONTEXT* ctx, ADDRINT ret);
-VOID SetTimerEntry(W::UINT* time);
+VOID SetTimerEntry(CONTEXT* ctx, W::UINT* time);
 VOID WaitForSingleObjectEntry(W::DWORD *time);
-VOID IcmpSendEchoEntry(ADDRINT* replyBuffer, ADDRINT* replySize, W::DWORD *time);
+VOID IcmpSendEchoEntry(CONTEXT* ctx, ADDRINT* replyBuffer, ADDRINT* replySize, W::DWORD *time);
 VOID IcmpSendEchoExit(CONTEXT* ctx, ADDRINT esp);
-VOID LoadLibraryAHook(const char** lib);
-VOID LoadLibraryWHook(const wchar_t** lib);
+VOID LoadLibraryAHook(CONTEXT* ctx, const char** lib);
+VOID LoadLibraryWHook(CONTEXT* ctx, const wchar_t** lib);
 VOID LoadLibraryExit(CONTEXT* ctx, ADDRINT esp);
 VOID GetUsernameEntry(W::LPTSTR* lpBuffer, W::LPDWORD* nSize);
 VOID GetUsernameExit(CONTEXT* ctx, ADDRINT esp);
-VOID FindWindowHookEntry(W::LPCTSTR* path1, W::LPCTSTR* path2);
+VOID FindWindowHookEntry(CONTEXT* ctx, W::LPCTSTR* path1, W::LPCTSTR* path2);
 VOID FindWindowHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp);
 VOID CloseHandleHookEntry(W::HANDLE* handle);
-VOID CloseHandleHookExit(W::BOOL* ret, ADDRINT esp);
+VOID CloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp);
 VOID WMIQueryHookEntry(W::LPCWSTR* query, W::VARIANT** var);
-VOID WMIQueryHookExit();
+VOID WMIQueryHookExit(thread_ctx_t* thread_ctx);
 
 /* ===================================================================== */
 /* SPECIAL-PURPOSE LOGGING HOOKS										 */

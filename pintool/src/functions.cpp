@@ -19,6 +19,12 @@ itreenode_t* node = itree_search(gs->dllRangeITree, espValue); \
 if(node != NULL) return; \
 } while (0)
 
+/* ============================================================================= */
+/* Define macro to get reference/copy clock to information from CONTEXT object   */
+/* ============================================================================= */
+extern REG thread_ctx_ptr;
+#define GET_INTERNAL_CLOCK(ctx) (((thread_ctx_t*)PIN_GetContextReg(ctx, thread_ctx_ptr))->clock)
+
 /* =========================================================================== */
 /* Instruction description for instruction tainting and modules inizialization */
 /* =========================================================================== */
@@ -420,6 +426,7 @@ namespace Functions {
 					case(SETTIMER_INDEX):
 						// Add hooking with IPOINT_BEFORE to bypass the timer initialization
 						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)SetTimerEntry,
+							IARG_CONTEXT,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 2,
 							IARG_END);
 						break;
@@ -432,6 +439,7 @@ namespace Functions {
 					case(ICMPECHO_INDEX):
 						// Add hooking with IPOINT_BEFORE to bypass the time-out interval
 						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)IcmpSendEchoEntry,
+							IARG_CONTEXT,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 5,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 6,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 7,
@@ -444,6 +452,7 @@ namespace Functions {
 						break;
 					case(LOADLIBA_INDEX):
 						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)LoadLibraryAHook,
+							IARG_CONTEXT,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 0,
 							IARG_INST_PTR,
 							IARG_END);
@@ -454,6 +463,7 @@ namespace Functions {
 						break;
 					case(LOADLIBW_INDEX):
 						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)LoadLibraryWHook,
+							IARG_CONTEXT,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 0,
 							IARG_INST_PTR,
 							IARG_END);
@@ -477,6 +487,7 @@ namespace Functions {
 					case(FINDWINDOW_INDEX):
 						// Add hooking with IPOINT_BEFORE to bypass the window parameters
 						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)FindWindowHookEntry,
+							IARG_CONTEXT,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 0,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 1,
 							IARG_END);
@@ -492,6 +503,7 @@ namespace Functions {
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 0,
 							IARG_END);
 						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)CloseHandleHookExit,
+							IARG_CONTEXT,
 							IARG_FUNCRET_EXITPOINT_REFERENCE,
 							IARG_REG_VALUE, REG_STACK_PTR,
 							IARG_END);
@@ -502,6 +514,7 @@ namespace Functions {
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 3,
 							IARG_END);
 						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)WMIQueryHookExit,
+							IARG_REG_VALUE, thread_ctx_ptr,
 							IARG_END);
 						break;
 					default:
@@ -543,7 +556,7 @@ VOID IsDebuggerPresentExit(CONTEXT* ctx, ADDRINT* ret, ADDRINT esp) {
 	if (_knobBypass) {
 		// Bypass API return value
 		*ret = 0;
-		logInfo->logBypass("IsDebuggerPresent");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "IsDebuggerPresent");
 	}
 	// Taint source: API return value
 	uint8_t color = GET_TAINT_COLOR(TT_ISDEBUGGERPRESENT);
@@ -557,7 +570,7 @@ VOID BlockInputExit(CONTEXT* ctx, ADDRINT* ret, ADDRINT esp) {
 	if (_knobBypass) {
 		// Bypass API return value
 		*ret = 0;
-		logInfo->logBypass("BlockInput");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "BlockInput");
 	}
 	// Taint source: API return value
 	// Note: was disabled in Andrea's code
@@ -580,7 +593,7 @@ VOID CheckRemoteDebuggerPresentExit(CONTEXT* ctx, ADDRINT eax, ADDRINT esp) {
 	W::PBOOL debuggerPresent = (W::PBOOL)*apiOutputs->lpbDebuggerPresent;
 	if (_knobBypass) {
 		*debuggerPresent = 0;
-		logInfo->logBypass("CheckRemoteDebuggerPresent");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "CheckRemoteDebuggerPresent");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_CHECKREMOTEDEBUGGER);
@@ -604,7 +617,7 @@ VOID EnumProcessesExit(CONTEXT* ctx, ADDRINT eax, ADDRINT esp) {
 	State::apiOutputs* apiOutputs = State::getApiOutputs();
 	State::apiOutputs::enumProcessesInformations *pc = &apiOutputs->_enumProcessesInformations;
 	ADDRINT* bytesProcesses = (ADDRINT*)*pc->bytesLpidProcesses;
-	logInfo->logBypass("EnumProcesses");
+	logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "EnumProcesses");
 	uint8_t color = GET_TAINT_COLOR(TT_ENUMPROCESSES);
 	if (color) {
 		logHookId(ctx, "EnumProcesses", *pc->lpidProcesses, *bytesProcesses);
@@ -631,7 +644,7 @@ VOID Process32FirstNextExit(CONTEXT* ctx, ADDRINT esp) {
 			const char** _path = (const char**)processInfoStructure->szExeFile;
 			*_path = BP_FAKEPROCESS;
 		}
-		logInfo->logBypass("Process32FirstA/Process32NextA");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "Process32FirstA/Process32NextA");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_PROCESS32FIRSTNEXT);
@@ -660,7 +673,7 @@ VOID Process32FirstNextWExit(CONTEXT* ctx, ADDRINT esp) {
 			const wchar_t** _path = (const wchar_t**)processInfoStructure->szExeFile;
 			*_path = BP_FAKEPROCESSW;
 		}
-		logInfo->logBypass("Process32FirstW/Process32NextW");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "Process32FirstW/Process32NextW");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_PROCESS32FIRSTNEXT);
@@ -697,7 +710,7 @@ VOID GetDiskFreeSpaceAExit(CONTEXT* ctx, ADDRINT esp) {
 		if (totalNumberOfFreeBytes != NULL) {
 			totalNumberOfFreeBytes->QuadPart = BP_MINDISKGB;
 		}
-		logInfo->logBypass("GetDiskFreeSpaceA");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "GetDiskFreeSpaceA");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_GETDISKFREESPACE);
@@ -744,7 +757,7 @@ VOID GetDiskFreeSpaceWExit(CONTEXT* ctx, ADDRINT esp) {
 		if (totalNumberOfFreeBytes != NULL) {
 			totalNumberOfFreeBytes->QuadPart = BP_MINDISKGB;
 		}
-		logInfo->logBypass("GetDiskFreeSpaceW");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "GetDiskFreeSpaceW");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_GETDISKFREESPACE);
@@ -777,7 +790,7 @@ VOID GlobalMemoryStatusExit(CONTEXT* ctx, ADDRINT esp) {
 	W::LPMEMORYSTATUSEX memoryInformations = (W::LPMEMORYSTATUSEX)*apiOutputs->lpMemoryInformations;
 	if (_knobBypass) {
 		memoryInformations->ullTotalPhys = BP_MINRAMGB;
-		logInfo->logBypass("GlobalMemoryStatus");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "GlobalMemoryStatus");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_GLOBALMEMORYSTATUS);
@@ -801,7 +814,7 @@ VOID GetSystemInfoExit(CONTEXT* ctx, ADDRINT esp) {
 	W::DWORD_PTR* dwActiveProcessorMask = &systemInfoStructure->dwActiveProcessorMask; // inner-pointer dwActiveProcessorMask
 	if (_knobBypass) {
 		systemInfoStructure->dwNumberOfProcessors = BP_NUMCORES;
-		logInfo->logBypass("GetSystemInfo");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "GetSystemInfo");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_GETSYSTEMINFO);
@@ -830,7 +843,7 @@ VOID GetCursorPosExit(CONTEXT* ctx, ADDRINT esp) {
 			point->x = rand() % 500;
 		if(point->y)
 			point->y = rand() % 500;
-		logInfo->logBypass("GetCursorPos");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "GetCursorPos");
 	}
 	// Taint source
 	uint8_t color = GET_TAINT_COLOR(TT_GETCURSORPOS);
@@ -866,7 +879,7 @@ VOID GetModuleFileNameHookExit(CONTEXT* ctx, ADDRINT esp) {
 		if (strstr(value, "VBOX") != NULL) {
 			memcpy(pc->lpModuleName, BP_FAKEDRV, sizeof(BP_FAKEDRV));
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 		}
 	}
 
@@ -878,7 +891,7 @@ VOID GetModuleFileNameHookExit(CONTEXT* ctx, ADDRINT esp) {
 		if (strstr(value, "VBOX") != NULL) {
 			memcpy(pc->lpModuleName, BP_FAKEDRV_W, sizeof(BP_FAKEDRV_W));
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 		}
 	}
 
@@ -916,7 +929,7 @@ VOID GetDeviceDriverBaseNameHookExit(CONTEXT* ctx, ADDRINT esp) {
 		if (HiddenElements::shouldHideGenericFileNameStr(value)) {
 			memcpy(pc->lpDriverBaseName, BP_FAKEDRV, sizeof(BP_FAKEDRV));
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 		}
 	}
 
@@ -927,7 +940,7 @@ VOID GetDeviceDriverBaseNameHookExit(CONTEXT* ctx, ADDRINT esp) {
 		if (HiddenElements::shouldHideGenericFileNameStr(value)) {
 			memcpy(pc->lpDriverBaseName, BP_FAKEDRV_W, sizeof(BP_FAKEDRV_W));
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 		}
 	}
 	// Taint source
@@ -1019,7 +1032,7 @@ VOID SetupDiGetDeviceRegistryPropertyHookExit(CONTEXT* ctx, ADDRINT ret) {
 	if (_knobBypass) {
 		if (strstr(value, "VBOX") != NULL || strstr(value, "VMWARE") != NULL) {
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 			char* tmp = (char*)apiOutputs->lpDeviceRegistryBuffer;
 			size_t len = strlen(value);
 			memset(tmp, 0, 2 * (len + 1)); // +1 unnecessary?
@@ -1032,7 +1045,7 @@ VOID SetupDiGetDeviceRegistryPropertyHookExit(CONTEXT* ctx, ADDRINT ret) {
 		GET_STR_TO_UPPER(apiOutputs->lpDeviceRegistryBuffer, value, PATH_BUFSIZE);
 		if (strstr(value, "VBOX") != NULL || strstr(value, "VMWARE") != NULL) {
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 			char* tmp = (char*)apiOutputs->lpDeviceRegistryBuffer;
 			size_t len = strlen(value);
 			memset(tmp, 0, len); // last byte is already 0
@@ -1058,7 +1071,7 @@ VOID GetTickCountExit(CONTEXT* ctx, W::DWORD* ret, ADDRINT esp) {
 		gs->_timeInfo.tick += 30 + gs->_timeInfo.sleepMsTick;
 		gs->_timeInfo.sleepMsTick = 0;
 		*ret = gs->_timeInfo.tick;
-		logInfo->logBypass("GetTickCount");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "GetTickCount");
 	}
 	// Taint source: API return value
 	uint8_t color = GET_TAINT_COLOR(TT_GETTICKCOUNT);
@@ -1067,7 +1080,7 @@ VOID GetTickCountExit(CONTEXT* ctx, W::DWORD* ret, ADDRINT esp) {
 	}
 }
 
-VOID SetTimerEntry(W::UINT* time) {
+VOID SetTimerEntry(CONTEXT* ctx, W::UINT* time) {
 	if (*time == INFINITE) 
 		return; 
 	// Bypass the sleep duration 
@@ -1076,7 +1089,7 @@ VOID SetTimerEntry(W::UINT* time) {
 		gs->_timeInfo.sleepMs += *time;
 		gs->_timeInfo.sleepMsTick += *time;
 		*time = BP_TIMER;
-		logInfo->logBypass("SetTimer");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "SetTimer");
 	}
 }
 
@@ -1092,7 +1105,7 @@ VOID WaitForSingleObjectEntry(W::DWORD *time) {
 	}
 }
 
-VOID IcmpSendEchoEntry(ADDRINT* replyBuffer, ADDRINT* replySize, W::DWORD *time) {
+VOID IcmpSendEchoEntry(CONTEXT* ctx, ADDRINT* replyBuffer, ADDRINT* replySize, W::DWORD *time) {
 	if (*time == INFINITE)
 		return;
 	// Bypass the time-out interval
@@ -1101,7 +1114,7 @@ VOID IcmpSendEchoEntry(ADDRINT* replyBuffer, ADDRINT* replySize, W::DWORD *time)
 		gs->_timeInfo.sleepMs += *time;
 		gs->_timeInfo.sleepMsTick += *time;
 		*time = BP_ICMP_ECHO;
-		logInfo->logBypass("IcmpSendEcho");
+		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "IcmpSendEcho");
 	}
 	// Store reply buffer and reply size into global variables
 	State::apiOutputs* apiOutputs = State::getApiOutputs();
@@ -1125,7 +1138,7 @@ VOID IcmpSendEchoExit(CONTEXT* ctx, ADDRINT esp) {
 	}
 }
 
-VOID LoadLibraryAHook(const char** lib) {
+VOID LoadLibraryAHook(CONTEXT* ctx, const char** lib) {
 	if (lib == NULL || *lib == NULL) 
 		return;
 
@@ -1136,7 +1149,7 @@ VOID LoadLibraryAHook(const char** lib) {
 	if (_knobBypass) {
 		if (strstr(value, "VIRTUALBOX") != NULL || strstr(value, "VBOX") != NULL || strstr(value, "HOOK") != NULL) {
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 			*lib = BP_FAKEDLL;
 			return;
 		}
@@ -1144,7 +1157,7 @@ VOID LoadLibraryAHook(const char** lib) {
 	return;
 }
 
-VOID LoadLibraryWHook(const wchar_t** lib) { 
+VOID LoadLibraryWHook(CONTEXT* ctx, const wchar_t** lib) { 
 	if (lib == NULL || *lib == NULL) 
 		return;
 
@@ -1155,7 +1168,7 @@ VOID LoadLibraryWHook(const wchar_t** lib) {
 	if (_knobBypass) {
 		if (strstr(value, "VIRTUALBOX") != NULL || strstr(value, "VBOX") != NULL || strstr(value, "HOOK") != NULL) {
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 			*lib = BP_FAKEDLL_W;
 			return;
 		}
@@ -1198,7 +1211,7 @@ VOID GetUsernameExit(CONTEXT* ctx, ADDRINT esp) {
 		if (HiddenElements::shouldHideUsernameStr(value)) {
 			memcpy(pc->usernameBuffer, BP_FAKEUSERNAME, sizeof(BP_FAKEUSERNAME));
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 		}
 	}
 
@@ -1209,7 +1222,7 @@ VOID GetUsernameExit(CONTEXT* ctx, ADDRINT esp) {
 		if (HiddenElements::shouldHideUsernameStr(value)) {
 			memcpy(pc->usernameBuffer, BP_FAKEUSERNAME_W, sizeof(BP_FAKEUSERNAME_W));
 			strcat(logName, value);
-			logModule->logBypass(logName);
+			logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 		}
 	}
 	// Taint source
@@ -1221,7 +1234,7 @@ VOID GetUsernameExit(CONTEXT* ctx, ADDRINT esp) {
 	return;
 }
 
-VOID FindWindowHookEntry(W::LPCTSTR* path1, W::LPCTSTR* path2) {
+VOID FindWindowHookEntry(CONTEXT* ctx, W::LPCTSTR* path1, W::LPCTSTR* path2) {
 	char value[PATH_BUFSIZE] = { 0 };
 	if (_knobBypass) {
 		char logName[256] = "FindWindow ";
@@ -1231,7 +1244,7 @@ VOID FindWindowHookEntry(W::LPCTSTR* path1, W::LPCTSTR* path2) {
 				GET_STR_TO_UPPER((char*)*path1, value, PATH_BUFSIZE);
 				if (HiddenElements::shouldHideWindowStr(value)) {
 					strcat(logName, value);
-					logModule->logBypass(logName);
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 					*path1 = STR_GUI_1A;
 					return;
 				}
@@ -1240,7 +1253,7 @@ VOID FindWindowHookEntry(W::LPCTSTR* path1, W::LPCTSTR* path2) {
 				GET_WSTR_TO_UPPER(*path1, value, PATH_BUFSIZE);
 				if (HiddenElements::shouldHideWindowStr(value)) {
 					strcat(logName, value);
-					logModule->logBypass(logName);
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 					*path1 = STR_GUI_1B;
 					return;
 				}
@@ -1254,7 +1267,7 @@ VOID FindWindowHookEntry(W::LPCTSTR* path1, W::LPCTSTR* path2) {
 				GET_STR_TO_UPPER((char*)*path2, value, PATH_BUFSIZE);
 				if (HiddenElements::shouldHideWindowStr(value)) {
 					strcat(logName, value);
-					logModule->logBypass(logName);
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 					*path2 = STR_GUI_2;
 					return;
 				}
@@ -1263,7 +1276,7 @@ VOID FindWindowHookEntry(W::LPCTSTR* path1, W::LPCTSTR* path2) {
 				GET_WSTR_TO_UPPER(*path2, value, PATH_BUFSIZE);
 				if (HiddenElements::shouldHideWindowStr(value)) {
 					strcat(logName, value);
-					logModule->logBypass(logName);
+					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
 					*path2 = STR_GUI_2B;
 					return;
 				}
@@ -1305,19 +1318,19 @@ VOID CloseHandleHookEntry(W::HANDLE* handle) {
 	}
 }
 
-VOID CloseHandleHookExit(W::BOOL* ret, ADDRINT esp) {
+VOID CloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp) {
 	CHECK_ESP_RETURN_ADDRESS(esp);
 	State::apiOutputs* apiOutputs = State::getApiOutputs();
 
 	if (_knobBypass) {
 		if (apiOutputs->closeHandleStatus == 1) {
 			*ret = 0;
-			logInfo->logBypass("CloseHandle STATUS_HANDLE_NOT_CLOSABLE");
+			logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "CloseHandle STATUS_HANDLE_NOT_CLOSABLE");
 		}
 		else if (apiOutputs->closeHandleStatus == 2) {
 			W::SetLastError(ERROR_INVALID_HANDLE);
 			*ret = CODEFORINVALIDHANDLE;
-			logInfo->logBypass("CloseHandle STATUS_INVALID_HANDLE");
+			logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "CloseHandle STATUS_INVALID_HANDLE");
 		}
 	}
 }
@@ -1330,10 +1343,10 @@ VOID WMIQueryHookEntry(W::LPCWSTR* query, W::VARIANT** var) {
 
 }
 
-VOID WMIQueryHookExit() {
+VOID WMIQueryHookExit(thread_ctx_t* thread_ctx) {
 	State::apiOutputs* apiOutputs = State::getApiOutputs();
 	State::apiOutputs::wmiInformations* pc = &apiOutputs->_wmiInformations;
-	WMI_Patch(pc->queryWMI, pc->var, logInfo);
+	WMI_Patch(thread_ctx->clock, pc->queryWMI, pc->var, logInfo);
 }
 
 

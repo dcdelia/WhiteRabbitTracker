@@ -214,11 +214,11 @@ condBranchAnalysis(thread_ctx_t *thread_ctx, ADDRINT addr, ADDRINT size, BOOL is
 		ADDRINT hash = updateHashMapping(thread_ctx);
 
 		// Log the tainted instruction using a buffered logger
-		logAlert(tdata, "%x %x %s; 0x%08x 0x%08x %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logAlert(tdata, "%x %x %s; 0x%08x 0x%08x %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, targetAddress, ins.c_str(), hash);
-		logInstruction(tdata, "%x %x %s; 0x%08x 0x%08x %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logInstruction(tdata, "%x %x %s; 0x%08x 0x%08x %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, targetAddress, instruction.c_str(), hash);
-		gs->logInfo->logTaintedBranch(thread_ctx->clock1, thread_ctx->clock2, addr, targetAddress, instruction, hash);
+		gs->logInfo->logTaintedBranch(thread_ctx->clock, addr, targetAddress, instruction, hash);
 		_alertApiTracingCounter = API_AFTER_TAINTED_BR;
 	}
 }
@@ -250,10 +250,10 @@ static void PIN_FAST_ANALYSIS_CALL
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_reg-imm";
-						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %d %d %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %d %d %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg).c_str(), immValue, operandsTainted,
 							(exportsMap)[nearestAddress].c_str(), hash);
-						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -264,9 +264,9 @@ static void PIN_FAST_ANALYSIS_CALL
 			TTINFO(logTaintedSystemCode) = 1;
 		}
 		// Log the tainted instruction using a buffered logger
-		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %d %d 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %d %d 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg).c_str(), immValue, operandsTainted, hash);
-		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -307,10 +307,10 @@ mem_imm_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_mem-imm";
-						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %d %d %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %d %d %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize,
 							immValue, operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);
-						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -321,9 +321,9 @@ mem_imm_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 			TTINFO(logTaintedSystemCode) = 1;
 		}
 		// Log the tainted instruction using a buffered logger
-		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %d %d 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %d %d 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize, immValue, operandsTainted, hash);
-		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -359,10 +359,10 @@ reg_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg_op0,
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_reg-reg";
-						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg_op0).c_str(), REG_StringShort(reg_op1).c_str(), 
 							operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);
-						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -373,9 +373,9 @@ reg_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg_op0,
 			TTINFO(logTaintedSystemCode) = 1;
 		}
 		// Log the tainted instruction using a buffered logger
-		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg_op0).c_str(), REG_StringShort(reg_op1).c_str(), operandsTainted, hash);
-		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n", thread_ctx->clock1, thread_ctx->clock2,
+		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 }
 END:
@@ -416,11 +416,11 @@ reg_mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UI
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_reg-mem";
 						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x(%d) %d %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2, 
+							thread_ctx->clock.c1, thread_ctx->clock.c2, 
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg0).c_str(),
 							memAddress, readSize, operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);
 						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -432,10 +432,10 @@ reg_mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UI
 		}
 		// Log the tainted instruction using a buffered logger
 		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x(%d) %d 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2, 
+			thread_ctx->clock.c1, thread_ctx->clock.c2, 
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg0).c_str(), memAddress, readSize, operandsTainted, hash);
 		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2,
+			thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -476,11 +476,11 @@ mem_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_mem-reg";
 						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %s %d %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize,
 							REG_StringShort(reg1).c_str(), operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);
 						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -492,10 +492,10 @@ mem_reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 		}
 		// Log the tainted instruction using a buffered logger
 		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %s %d 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2,
+			thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize, REG_StringShort(reg1).c_str(), operandsTainted, hash);
 		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2, 
+			thread_ctx->clock.c1, thread_ctx->clock.c2, 
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -532,11 +532,11 @@ reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UINT32
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_reg";
 						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg0).c_str(), OP_NA,
 							operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);
 						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -548,10 +548,10 @@ reg_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, REG reg0, UINT32
 		}
 		// Log the tainted instruction using a buffered logger
 		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2,
+			thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), REG_StringShort(reg0).c_str(), OP_NA, operandsTainted, hash);
 		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2,
+			thread_ctx->clock.c1, thread_ctx->clock.c2,
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -592,11 +592,11 @@ mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memAddre
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_mem";
 						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %s %d %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize,
 							OP_NA, operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);
 						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2,
+							thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -608,10 +608,10 @@ mem_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memAddre
 		}
 		// Log the tainted instruction using a buffered logger
 		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %s %d 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2, 
+			thread_ctx->clock.c1, thread_ctx->clock.c2, 
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize, OP_NA, operandsTainted, hash);
 		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2, 
+			thread_ctx->clock.c1, thread_ctx->clock.c2, 
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -648,11 +648,11 @@ alert(thread_ctx_t *thread_ctx, ADDRINT addr, ADDRINT size) {
 						// Log the tainted instruction using a buffered logger
 						alertType = "system_generic";
 						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2, 
+							thread_ctx->clock.c1, thread_ctx->clock.c2, 
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), OP_NA, OP_NA, operandsTainted,
 							(exportsMap)[nearestAddress].c_str(), hash);
 						logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s %s 0x%08x\n",
-							thread_ctx->clock1, thread_ctx->clock2, 
+							thread_ctx->clock.c1, thread_ctx->clock.c2, 
 							alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), (exportsMap)[nearestAddress].c_str(), hash);
 					}
 				}
@@ -664,10 +664,10 @@ alert(thread_ctx_t *thread_ctx, ADDRINT addr, ADDRINT size) {
 		}
 		// Log the tainted instruction using a buffered logger
 		logAlert(tdata, "%x %x %s; 0x%08x [%d] %s %s %s %d 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2, 
+			thread_ctx->clock.c1, thread_ctx->clock.c2, 
 			alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), OP_NA, OP_NA, operandsTainted, hash);
 		logInstruction(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x\n",
-			thread_ctx->clock1, thread_ctx->clock2, 
+			thread_ctx->clock.c1, thread_ctx->clock.c2, 
 			alertType.c_str(), addr, (int)TTINFO(tainted), instruction.c_str(), hash);
 	}
 END:
@@ -838,11 +838,11 @@ void PIN_FAST_ANALYSIS_CALL update_offending_instruction(thread_ctx_t* thread_ct
 }
 
 void PIN_FAST_ANALYSIS_CALL updateClock1(thread_ctx_t* thread_ctx) {
-	thread_ctx->clock1++;
+	thread_ctx->clock.c1++;
 }
 
 void PIN_FAST_ANALYSIS_CALL updateClock2(thread_ctx_t* thread_ctx) {
-	thread_ctx->clock2++;
+	thread_ctx->clock.c2++;
 }
 
 

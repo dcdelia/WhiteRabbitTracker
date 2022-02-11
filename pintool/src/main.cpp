@@ -314,7 +314,9 @@ EXCEPT_HANDLING_RESULT internalExceptionHandler(THREADID tid, EXCEPTION_INFO *pE
 	if (pExceptInfo->GetExceptCode() == EXCEPTCODE_DBG_SINGLE_STEP_TRAP) {
 		ExceptionHandler *eh = ExceptionHandler::getInstance();
 		eh->setExceptionToExecute(NTSTATUS_STATUS_BREAKPOINT);
-		logInfo.logBypass("Single Step Exception");
+		CONTEXT* _ctx = pPhysCtxt->_pCtxt;
+		thread_ctx_t* tctx = (thread_ctx_t*)PIN_GetContextReg(_ctx, thread_ctx_ptr);
+		logInfo.logBypass(tctx->clock, "Single Step Exception");
 		return EHR_HANDLED;
 	} 
 	// Libdft hack for EFLAGS (unaligned memory access)
