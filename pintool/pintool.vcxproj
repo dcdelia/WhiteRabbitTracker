@@ -316,6 +316,7 @@
     <ClCompile Include="src\libdft\tagmap.cpp" />
     <ClCompile Include="src\libdft\tag_traits.cpp" />
     <ClCompile Include="src\LoggingInfo.cpp" />
+    <ClCompile Include="src\loghooks.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\ModuleInfo.cpp" />
     <ClCompile Include="src\ProcessInfo.cpp" />

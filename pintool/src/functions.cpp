@@ -33,86 +33,15 @@ extern ins_desc_t ins_desc[XED_ICLASS_LAST];
 LoggingInfo* logInfo;
 
 namespace Functions {
+	/* stuff from loghooks.cpp (dirty, I know!) */
+	void InitLoggingHooks();
+	void AddLoggingHooks(IMG img);
+
+
 	/* ===================================================================== */
 	/* Hook/API map and other modules (internal use)                         */
 	/* ===================================================================== */
 	static std::map<std::string, int> fMap;
-	static std::map<std::string, int> fLoggingMap; // simple hooks
-
-	// TODO make this visible outsize
-	std::map<const char*, int> apiCallCounts;
-
-	// main source: malapi.io + custom filtering
-	static const char* apiname_only[] = {
-		// processes
-		"CreateProcessA","CreateRemoteThread","CreateRemoteThreadEx","NtCreateProcess",
-		"NtCreateProcessEx","NtCreateUserProcess","CreateThread", //"SetThreadPriority",
-		"NtSetContextThread","NtSetInformationProcess","NtSetInformationThread",
-		"TerminateProcess","TerminateThread","NtTerminateProcess","NtTerminateThread",
-		"RtlSetProcessIsCritical","Wow64SetThreadContext","SetThreadContext",
-		"NtSuspendProcess","NtResumeProcess","KeInsertQueueApc","QueueUserAPC",
-		"SetProcessDEPPolicy","SetThreadContext","SuspendThread","ResumeThread",
-		"AdjustTokenPrivileges","NtAdjustPrivilegesToken","CreateProcessWithTokenW",
-		"NtResumeThread","NtQueueApcThread","NtQueueApcThreadEx","NtQueueApcThreadEx2",
-		// service stuff
-		"ControlService","ControlServiceExA","CreateServiceA","DeleteService",
-		"OpenSCManagerA","OpenServiceA","StartServiceA","StartServiceCtrlDispatcherA",
-		// registry stuff
-		"RegCreateKeyExA","RegCreateKeyA","RegSetValueExA","RegSetKeyValueA",
-		"RegDeleteValueA","RegFlushKey","RegLoadKeyA","RegOpenKeyTransactedA",
-		"RegOpenUserClassesRoot","RegOverridePredefKey","RegReplaceKeyA",
-		"RegRestoreKeyA","RegSaveKeyA","RegSaveKeyExA","RegSetKeySecurity",
-		"RegUnLoadKeyA","RegConnectRegistryA","RegCopyTreeA","RegCreateKeyTransactedA",
-		"RegDeleteKeyA","RegDeleteKeyExA", "RegDeleteKeyTransactedA", "RegDeleteKeyValueA",
-		"RegDeleteTreeA", "RegDeleteValueA", "NtDeleteKey","NtDeleteValueKey","NtSetValueKey",
-		// crypto stuff
-		"CryptAcquireContextA","EncryptFileA","CryptEncrypt","CryptDecrypt",
-		"CryptCreateHash","CryptHashData","CryptDeriveKey","CryptSetKeyParam",
-		"CryptGetHashParam","CryptSetKeyParam","CryptDestroyKey","CryptGenRandom",
-		"DecryptFileA","FlushEfsCache","CryptStringToBinary","CryptBinaryToString",
-		"CryptReleaseContext","CryptDestroyHash",
-		// files
-		"ConnectNamedPipe","CopyFileA","GetTempPathA","MoveFileA","MoveFileExA",
-		"PeekNamedPipe","WriteFile","CopyFile2","CopyFileExA","GetTempFileNameA",
-		"CreatePipe","SetFileTime"
-		// injection (see non-self hooks for more)
-		"MapViewOfFile","NtMapViewOfSection","NtDuplicateObject","DuplicateHandle",
-		// GUI & spying
-		"CallWindowProcA","ShowWindow","OpenClipboard","SetForegroundWindow",
-		"BringWindowToTop","SetFocus","DrawTextExA","GetDesktopWindow",
-		"SetClipboardData","SetWindowLongA","SetWindowLongPtrA",
-		"AttachThreadInput","CallNextHookEx","GetAsyncKeyState","GetClipboardData",
-		"GetDC","GetDCEx","GetForegroundWindow","GetKeyboardState","GetKeyState",
-		"GetMessageA","GetRawInputData","GetWindowDC","MapVirtualKeyA","MapVirtualKeyExA",
-		"PeekMessageA","PostMessageA","PostThreadMessageA","RegisterHotKey",
-		"RegisterRawInputDevices","SendMessageA","SendMessageCallbackA",
-		"SendMessageTimeoutA","SendNotifyMessageA","SetWindowsHookExA",
-		"SetWinEventHook","UnhookWindowsHookEx","BitBlt","StretchBlt","GetKeynameTextA",
-		"CreateWindowExA","SetPropA",
-		// misc
-		"NtSetSystemEnvironmentValueEx","SetEnvironmentVariableA",
-		"ImpersonateLoggedOnUser","SetThreadToken",
-		"NetShareSetInfo","NetShareAdd","WNetAddConnection2A",
-		// undecided
-		// DeleteFileA NtMakeTemporaryObject SetCurrentDirectory NtContinue
-	};
-
-	typedef struct {
-		const char* name;
-		uint8_t handle_arg_idx;
-	} api_filter_self_t;
-
-	static const api_filter_self_t apinames_if_not_self [] = {
-		{ "ReadProcessMemory", 0 },
-		{ "NtAllocateVirtualMemory", 0 },
-		{ "VirtualAllocEx", 0 },
-		{ "VirtualAllocExNuma", 0 },
-		{ "WriteProcessMemory", 0 },
-		{ "NtUnmapViewOfSection", 0 },
-		{ "NtWriteVirtualMemory", 0 },
-		{ "NtReadVirtualMemory", 0 },
-		{ "NtProtectVirtualMemory", 0}
-	};
 
 	/* ===================================================================== */
 	/* Initialization function to define API map                             */
@@ -120,6 +49,10 @@ namespace Functions {
 	void Init(LoggingInfo* logInfoParameter) {
 		// Setup modules
 		logInfo = logInfoParameter;
+
+		// External stuff
+		InitLoggingHooks();
+
 		// Debugger API hooks
 		fMap.insert(std::pair<std::string, int>("IsDebuggerPresent", ISDEBUGGERPRESENT_INDEX));
 		fMap.insert(std::pair<std::string, int>("BlockInput", BLOCKINPUT_INDEX));
@@ -168,61 +101,11 @@ namespace Functions {
 		fMap.insert(std::pair<std::string, int>("FindWindowA", FINDWINDOW_INDEX));
 		fMap.insert(std::pair<std::string, int>("NtClose", CLOSEH_INDEX)); 
 		fMap.insert(std::pair<std::string, int>("?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z", WMI_INDEX));
-	
-		// hooks for logging
-		for (size_t i = 0; i < sizeof(apiname_only)/sizeof(apiname_only[0]); ++i) {
-			fLoggingMap.insert(std::pair<std::string, int>(apiname_only[i], LOG_IOC_APINAME_ONLY));
-		}
-		for (size_t i = 0; i < sizeof(apinames_if_not_self) / sizeof(apinames_if_not_self[0]); ++i) {
-			fLoggingMap.insert(std::pair<std::string, int>(apinames_if_not_self[i].name, LOG_IOC_APINAME_IF_NOT_SELF));
-		}
-	
 	}
-
-	static int lookupArgForAPINotSelf(const char* name) {
-		for (size_t i = 0; i < sizeof(apinames_if_not_self) / sizeof(apinames_if_not_self[0]); ++i) {
-			const api_filter_self_t* item = &apinames_if_not_self[i];
-			if (!strcmp(name, item->name)) return item->handle_arg_idx;
-		}
-	}
-
-	static void AddLoggingHooks(IMG img) {
-		for (std::map<std::string, int>::iterator it = fLoggingMap.begin(), end = fLoggingMap.end(); it != end; ++it) {
-			// Get the function name 
-			const char* func_name = it->first.c_str();
-			// Get a pointer to the function
-			RTN rtn = RTN_FindByName(img, func_name);
-			// Check if the routine (function) is valid
-			if (rtn != RTN_Invalid()) {
-				int index = it->second;
-				// Open the routine
-				RTN_Open(rtn);
-				switch (index) {
-				case(LOG_IOC_APINAME_ONLY):
-					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)LogFunctionByName,
-						IARG_REG_VALUE, REG_STACK_PTR,
-						IARG_PTR, func_name,
-						IARG_END);
-					break;
-				case(LOG_IOC_APINAME_IF_NOT_SELF):
-					RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)LogFunctionIfNotSelfByName,
-						IARG_REG_VALUE, REG_STACK_PTR,
-						IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
-						IARG_PTR, func_name,
-						IARG_END);
-
-				default: break;
-				}
-				// Close the routine
-				RTN_Close(rtn);
-			}
-		}
-
-	}
-
 
 	// Scan the image and try to hook any found function specified in the API map
 	void AddHooks(IMG img) {
+		// external stuff first
 		AddLoggingHooks(img);
 
 		// Iterate over functions that we want to hook/replace
@@ -529,24 +412,6 @@ namespace Functions {
 		}
 	}
 }
-
-/* Special-purpose logging hooks */
-
-VOID LogFunctionIfNotSelfByName(ADDRINT esp, W::HANDLE hProcess, const char* name) {
-	if (hProcess == (W::HANDLE)-1) return;
-	CHECK_ESP_RETURN_ADDRESS(esp);
-	if (!Functions::apiCallCounts[name]++) { // only on first invocation
-		logInfo->logMisc(name);
-	}
-}
-
-VOID LogFunctionByName(ADDRINT esp, const char* name) {
-	CHECK_ESP_RETURN_ADDRESS(esp);
-	if (!Functions::apiCallCounts[name]++) { // only on first invocation
-		logInfo->logMisc(name);
-	}
-}
-
 
 /* API HOOKS (taint sources) begin here */
 

@@ -94,6 +94,10 @@ VOID WMIQueryHookExit(thread_ctx_t* thread_ctx);
 /* ===================================================================== */
 VOID LogFunctionByName(ADDRINT esp, const char* name);
 VOID LogFunctionIfNotSelfByName(ADDRINT esp, W::HANDLE hProcess, const char* name);
+VOID LogTwoUnicodeStrings(ADDRINT esp, W::PCUNICODE_STRING s1, W::PCUNICODE_STRING s2, const char* apiname);
+VOID LogTwoWcharStrings(ADDRINT esp, W::LPCWCH s1, W::LPCWCH s2, const char* apiname);
+VOID LogTwoCharStrings(ADDRINT esp, const char* s1, const char* s2, const char* apiname);
+
 
 /* ===================================================================== */
 /* INSTRUCTION HOOKS (taint sinks)                                       */
@@ -173,5 +177,9 @@ enum {
 enum {
 	LOG_IOC_APINAME_ONLY,
 	LOG_IOC_APINAME_IF_NOT_SELF,
-	LOG_STRINGFUN_TWO_ARGS
+	LOG_STRINGFUN_TWO_ARGS,
+	LOG_RTLSTR,
+	LOG_WCPAIR_ONETWO,
+	LOG_CPAIR_ONETWO,
+	LOG_KCMPSTR
 };
