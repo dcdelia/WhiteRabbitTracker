@@ -69,6 +69,14 @@ VOID ImageUnload(IMG Image, VOID* v) {
 }
 
 /* ===================================================================== */
+/* Functions to handle "tainted" API calls                               */
+/* ===================================================================== */
+ADDRINT PIN_FAST_ANALYSIS_CALL TaintAPICallIf() {
+	return _alertApiTracingCounter;
+}
+
+
+/* ===================================================================== */
 /* Function called BEFORE every TRACE                                    */
 /* ===================================================================== */
 VOID InstrumentInstruction(TRACE trace, VOID *v) {
@@ -76,25 +84,26 @@ VOID InstrumentInstruction(TRACE trace, VOID *v) {
 	BBL bbl;
 	INS ins;
 
+	State::globalState* gs;
+	if (_knobApiTracing) gs = State::getGlobalState();
+
 	// Traverse all the BBLs in the trace 
 	for (bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
 		// Traverse all the instructions in the BBL 
 		for (ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins)) {
 			// Check for special instructions (cpuid, rdtsc, int and in) to avoid VM/sandbox detection and taint memory
 			specialInstructionsHandlerInfo->checkSpecialInstruction(ins);
-			if (_knobApiTracing) {
-				// If "control flow" instruction (branch, call, ret) OR "far jump" instruction (FAR_JMP in Windows with IA32 is sometimes a syscall)
-				if (_alertApiTracingCounter > 0 && (INS_IsControlFlow(ins) || INS_IsFarJump(ins))) {
-					// Insert a call to "saveTransitions" (AFUNPTR) relative to instruction "ins"
-					// parameters: IARG_INST_PTR (address of instrumented instruction), IARG_BRANCH_TARGET_ADDR (target address of the branch instruction)
-					// hint: remember to use IARG_END (end argument list)!!
-					ADDRINT curEip = INS_Address(ins);
-					INS_InsertCall(
-						ins,
-						IPOINT_BEFORE, (AFUNPTR)SaveTransitions,
+			if (_knobApiTracing && (INS_IsControlFlow(ins) || INS_IsFarJump(ins))) {
+				itreenode_t* node = itree_search(gs->dllRangeITree, INS_Address(ins));
+				if (!node) { // we hook code from program code only
+					INS_InsertIfCall(ins, IPOINT_BEFORE,
+						(AFUNPTR)TaintAPICallIf,
+						IARG_FAST_ANALYSIS_CALL,
+						IARG_END);
+					INS_InsertThenCall(ins, IPOINT_BEFORE,
+						(AFUNPTR)SaveTransitions,
 						IARG_INST_PTR,
 						IARG_BRANCH_TARGET_ADDR,
-						IARG_ADDRINT, curEip,
 						IARG_END
 					);
 				}
@@ -125,8 +134,8 @@ W::DWORD searchNearestAddressExportMap(std::map<W::DWORD, std::string> exportsMa
 /* ===================================================================== */
 /* Function called BEFORE the analysis routine to enter critical section */
 /* ===================================================================== */
-VOID SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, ADDRINT cur_eip) {
-	CHECK_EIP_ADDRESS(cur_eip);
+VOID SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo) {
+	//CHECK_EIP_ADDRESS(cur_eip);
 	// Enter critical section (ensure that we can call PIN APIs)
 	PIN_LockClient();
 	// Call analysis routine
