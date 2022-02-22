@@ -69,10 +69,67 @@ VOID ImageUnload(IMG Image, VOID* v) {
 }
 
 /* ===================================================================== */
-/* Functions to handle "tainted" API calls                               */
+/* Function to help with "tainted" API calls                             */
 /* ===================================================================== */
 ADDRINT PIN_FAST_ANALYSIS_CALL TaintAPICallIf() {
 	return _alertApiTracingCounter;
+}
+
+
+/* ===================================================================== */
+/* Functions to help with single-stepping anti-debugging tricks          */
+/* ===================================================================== */
+VOID handleInt2d(CONTEXT* ctx, THREADID tid, ADDRINT eip) {
+	std::cerr << std::hex << eip << " int2d playing HERE!" << std::endl;
+	std::cerr << "Value into EAX: " << std::hex << PIN_GetContextReg(ctx, REG_GAX) << std::endl;
+	
+	// int 2d takes 2 bytes + Windows skips an extra byte according to EAX value
+	EXCEPTION_INFO exc;
+	PIN_InitWindowsExceptionInfo(&exc, NTSTATUS_STATUS_BREAKPOINT, eip+0x3);
+	PIN_SetContextReg(ctx, REG_INST_PTR, eip + 0x3); // advance EIP
+	PIN_RaiseException(ctx, tid, &exc);
+}
+
+VOID handlePopFd(CONTEXT* ctx, THREADID tid, ADDRINT eip, ADDRINT esp) {
+	ADDRINT eflags = *((ADDRINT*)esp);
+	if (!(eflags & 0x100)) return; // benign popfd
+
+	std::cerr << std::hex << eip << " popf PLAYING WITH TRAP FLAG HERE!" << std::endl;
+	
+	EXCEPTION_INFO exc;
+	PIN_InitWindowsExceptionInfo(&exc, NTSTATUS_STATUS_SINGLE_STEP, eip);
+	eflags |= 1UL << 8;
+	PIN_SetContextReg(ctx, REG_STACK_PTR, esp + 4); // consume stack element
+	PIN_SetContextReg(ctx, REG_INST_PTR, eip + 0x1); // advance EIP
+	PIN_SetContextReg(ctx, REG_EFLAGS, eflags); // restore other flags
+	PIN_RaiseException(ctx, tid, &exc);
+}
+
+/* ===================================================================== */
+/* AOT instrumentation for some instructions (more stable than TRACE)    */
+/* ===================================================================== */
+VOID InstrumentInstructionAOT(INS ins, VOID* v) {
+	// TODO optimizations varie
+	if (INS_IsInterrupt(ins) && INS_Disassemble(ins).find("int 0x2d") != string::npos) {
+		if (BYPASS(BP_INT2D)) {
+			INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)handleInt2d,
+				IARG_CONTEXT, IARG_THREAD_ID,
+				IARG_INST_PTR,
+				IARG_END);
+		}
+	} else {
+		// Pin type is: OPCODE
+		// XED reference: https://intelxed.github.io/ref-manual/xed-iclass-enum_8h.html
+		xed_iclass_enum_t opcode = (xed_iclass_enum_t)INS_Opcode(ins);
+
+		// popfd only (no XED_ICLASS_POPF or XED_ICLASS_POPFQ)
+		if (opcode == XED_ICLASS_POPFD) { // TODO add check on knob
+			//std::cerr << str << " at " << std::hex << INS_Address(ins) << std::endl;
+			INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)handlePopFd,
+				IARG_CONTEXT, IARG_THREAD_ID,
+				IARG_INST_PTR, IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
+		}
+	}
 }
 
 
@@ -91,8 +148,10 @@ VOID InstrumentInstruction(TRACE trace, VOID *v) {
 	for (bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
 		// Traverse all the instructions in the BBL 
 		for (ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins)) {
-			// Check for special instructions (cpuid, rdtsc, int and in) to avoid VM/sandbox detection and taint memory
+			// special-purpose instruction-level hooks (non-AOT)
 			specialInstructionsHandlerInfo->checkSpecialInstruction(ins);
+
+			// API logging for "tainted" calls 
 			if (_knobApiTracing && (INS_IsControlFlow(ins) || INS_IsFarJump(ins))) {
 				itreenode_t* node = itree_search(gs->dllRangeITree, INS_Address(ins));
 				if (!node) { // we hook code from program code only
@@ -323,12 +382,8 @@ EXCEPT_HANDLING_RESULT internalExceptionHandler(THREADID tid, EXCEPTION_INFO *pE
 	std::cout << PIN_ExceptionToString(pExceptInfo).c_str() << " Code: " << pExceptInfo->GetExceptCode() << std::endl;
 	// Handle single-step exception
 	if (pExceptInfo->GetExceptCode() == EXCEPTCODE_DBG_SINGLE_STEP_TRAP) {
-		ExceptionHandler *eh = ExceptionHandler::getInstance();
-		eh->setExceptionToExecute(NTSTATUS_STATUS_BREAKPOINT);
-		CONTEXT* _ctx = pPhysCtxt->_pCtxt;
-		thread_ctx_t* tctx = (thread_ctx_t*)PIN_GetContextReg(_ctx, thread_ctx_ptr);
-		logInfo.logBypass(tctx->clock, "Single Step Exception");
-		return EHR_HANDLED;
+		std::cerr << "Uncaught single-step exception: this should not be happening..." << std::endl;
+		return EHR_HANDLED; // TODO see if we ever get here with untested anti-dbg techniques
 	} 
 	// Libdft hack for EFLAGS (unaligned memory access)
 	else if (PIN_GetExceptionCode(pExceptInfo) == EXCEPTCODE_ACCESS_MISALIGNED) {
@@ -490,6 +545,9 @@ int main(int argc, char * argv[]) {
 	// Initialize SpecialInstructions (to handle special instructions) object with related modules (processInfo and logInfo)
 	specialInstructionsHandlerInfo = SpecialInstructionsHandler::getInstance();
 	specialInstructionsHandlerInfo->init(&pInfo, &logInfo);
+
+	// AOT tricks to get around single-stepping and other corner cases (if any)
+	INS_AddInstrumentFunction(InstrumentInstructionAOT, NULL);
 
 	// Register function to be called for every loaded module (populate ProcessInfo object, populate interval tree and add API HOOKING FOR FURTHER TAINT ANALYSIS)
 	IMG_AddInstrumentFunction(ImageLoad, NULL);

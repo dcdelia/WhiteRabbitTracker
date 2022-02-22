@@ -83,6 +83,7 @@ void SpecialInstructionsHandler::regInit(REGSET* regsIn, REGSET* regsOut) {
 	REGSET_Insert(*regsOut, REG_ESI);
 }
 
+
 /* ===================================================================== */
 /* Function to check for specific special instruction and insert handlers*/
 /* ===================================================================== */
@@ -90,20 +91,9 @@ void SpecialInstructionsHandler::checkSpecialInstruction(INS ins) {
 	static int insCount = 0;
 	static ADDRINT cpuidCount = 0;
 	static ADDRINT rdtscCount = 0;
-	ExceptionHandler* eh = ExceptionHandler::getInstance();
+	
 	SpecialInstructionsHandler* specialInstructionsHandlerInfo = SpecialInstructionsHandler::getInstance();
-	// check if exist a PENDING EXCEPTION (like for int 2d) and EXECUTE THE EXCEPTION
-	if (eh->isPendingException()) {
-		if (insCount == 0)
-			insCount++;
-		else {
-			insCount = 0;
-			// Trigger the current exception
-			INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)ExceptionHandler::executeExceptionIns, IARG_CONTEXT,
-				IARG_THREAD_ID, IARG_ADDRINT, INS_Address(ins), IARG_END);
-			return;
-		}
-	}
+
 	// Get disassembled instruction
 	ADDRINT curEip = INS_Address(ins);
 	std::string disassembled_ins = disassembleInstruction(curEip, INS_Size(ins));
@@ -136,13 +126,6 @@ void SpecialInstructionsHandler::checkSpecialInstruction(INS ins) {
 			IARG_PARTIAL_CONTEXT, &regsIn, &regsOut,
 			IARG_ADDRINT, curEip,
 			IARG_PTR, &rdtscCount,
-			IARG_END);
-	}
-	// If "int 2d" instruction (log and generate exception to avoid VM/sandbox detection)
-	else if (specialInstructionsHandlerInfo->isStrEqualI(INS_Mnemonic(ins), "int 0x2d") || disassembled_ins.find("int 0x2d") != std::string::npos) {
-		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)SpecialInstructionsHandler::Int2dCalled,
-			IARG_CONTEXT,
-			IARG_ADDRINT, curEip,
 			IARG_END);
 	}
 	// FPU leak evasion
@@ -312,20 +295,7 @@ void SpecialInstructionsHandler::AlterRdtscValues(ADDRINT ip, CONTEXT * ctxt, AD
 		TAINT_TAG_REG(ctxt, GPR_EDX, color, color, color, color);
 	}
 }
-/* ===================================================================== */
-/* Function to handle the int 2d instruction                             */
-/* ===================================================================== */
-void SpecialInstructionsHandler::Int2dCalled(const CONTEXT* ctxt, ADDRINT cur_eip) {
-	CHECK_EIP_ADDRESS(cur_eip);
-	SpecialInstructionsHandler *classHandler = SpecialInstructionsHandler::getInstance();
-	// Get class instance to access objects
-	ExceptionHandler *eh = ExceptionHandler::getInstance();
-	// Insert and call exception on int 2d
-	if (BYPASS(BP_INT2D)) {
-		eh->setExceptionToExecute(NTSTATUS_STATUS_BREAKPOINT);
-		classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "INT 0X2D");
-	}
-}
+
 
 /* ===================================================================== */
 /* Function to update the FPU structure in order to fake the address of  */

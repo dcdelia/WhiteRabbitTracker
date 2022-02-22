@@ -29,9 +29,6 @@
     <ClCompile Include="src\specialInstructions.cpp">
       <Filter>Source files</Filter>
     </ClCompile>
-    <ClCompile Include="src\exceptionHandler.cpp">
-      <Filter>Source files</Filter>
-    </ClCompile>
     <ClCompile Include="src\functions.cpp">
       <Filter>Source files</Filter>
     </ClCompile>
@@ -112,9 +109,6 @@
       <Filter>libdft</Filter>
     </ClInclude>
     <ClInclude Include="src\winheaders.h">
-      <Filter>Header files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\exceptionHandler.h">
       <Filter>Header files</Filter>
     </ClInclude>
     <ClInclude Include="src\functions.h">

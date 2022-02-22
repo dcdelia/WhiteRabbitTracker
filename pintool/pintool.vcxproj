@@ -189,7 +189,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /ignore:4210 /ignore:4049 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>$(PinFolder)\ia32\runtime\pincrt\crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;ntdll-32.lib;kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(PinFolder)\ia32\runtime\pincrt\crtbeginS.obj;pin.lib;xed.lib;pincrt.lib;ntdll-32.lib;kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(PinFolder)\ia32\lib;$(PinFolder)\ia32\lib-ext;$(PinFolder)\ia32\runtime\pincrt\;$(PinFolder)\extras\xed-ia32\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -262,7 +262,7 @@
       <ExceptionHandling>
       </ExceptionHandling>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
@@ -277,7 +277,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /ignore:4210 /ignore:4049 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>$(PinFolder)\ia32\runtime\pincrt\crtbeginS.obj;pin.lib;xed.lib;pinvm.lib;stlport-static.lib;m-static.lib;c-static.lib;os-apis.lib;Zycore.lib;Zydis.lib;ntdll-32.lib;kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(PinFolder)\ia32\runtime\pincrt\crtbeginS.obj;pin.lib;xed.lib;pincrt.lib;Zycore.lib;Zydis.lib;kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(PinFolder)\ia32\lib;$(PinFolder)\ia32\lib-ext;$(PinFolder)\ia32\runtime\pincrt\;$(PinFolder)\extras\xed-ia32\lib;$(ZydisFolder)\msvc\bin\DebugX86\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -305,7 +305,6 @@
     <ClCompile Include="src\bufferLoggingInfo.cpp" />
     <ClCompile Include="src\callStack.cpp" />
     <ClCompile Include="src\disassembler.cpp" />
-    <ClCompile Include="src\exceptionHandler.cpp" />
     <ClCompile Include="src\functions.cpp" />
     <ClCompile Include="src\helper.cpp" />
     <ClCompile Include="src\HiddenElements.cpp" />
@@ -338,7 +337,6 @@
     <ClInclude Include="src\bypass.h" />
     <ClInclude Include="src\callStack.h" />
     <ClInclude Include="src\disassembler.h" />
-    <ClInclude Include="src\exceptionHandler.h" />
     <ClInclude Include="src\functions.h" />
     <ClInclude Include="src\helper.h" />
     <ClInclude Include="src\HiddenElements.h" />

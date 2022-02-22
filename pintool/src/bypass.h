@@ -45,7 +45,7 @@ enum bypass {
 	BP_WMI,
 	BP_CPUID,
 	BP_RDTSC,
-	BP_INT2D, // I think the bypass is broken...
+	BP_INT2D,
 	BP_IN_EAX_DX,
 	BP_OBSIDIUM_DRIVECHECK,
 	BP_OBSIDIUM_DEADPATH,

@@ -2,7 +2,6 @@
 #include "ModuleInfo.h"
 #include "ProcessInfo.h"
 #include "LoggingInfo.h"
-#include "ExceptionHandler.h"
 #include "HiddenElements.h"
 #include "pin.H"
 #include "state.h"
@@ -65,11 +64,6 @@ public:
 	/* Function to handle the rdtsc instruction                              */
 	/* ===================================================================== */
 	static void AlterRdtscValues(ADDRINT ip, CONTEXT * ctxt, ADDRINT cur_eip, ADDRINT *rdtscCount);
-
-	/* ===================================================================== */
-	/* Function to handle the int 2d and log the instruction                 */
-	/* ===================================================================== */
-	static void Int2dCalled(const CONTEXT* ctxt, ADDRINT cur_eip);
 
 	/* ===================================================================== */
 	/* Function to update the FPU structure in order to fake the address of  */

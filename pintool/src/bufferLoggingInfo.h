@@ -4,9 +4,9 @@
 #include <fstream>
 #include <intrin.h>
 
-#define LOGPATH               "C:\\Pin315\\experiment\\"
-#define LOGPATH_TAINT         "C:\\Pin315\\experiment\\taint\\"
-#define USE_SCZTOON           1
+#define LOGPATH               "C:\\Pin319\\experiment\\"
+#define LOGPATH_TAINT         "C:\\Pin319\\experiment\\taint\\"
+#define USE_SCZTOON           1 // scztoon off when debugging
 #define SIZE_SCZTOON	      5*1024*1024	// 5 MB (reduce with many threads?)
 #define SIZE_SCZ		      2048		// max bytes written at a time
 #define API_AFTER_TAINTED_BR  10 // number of tainted API to log after a tainted branch

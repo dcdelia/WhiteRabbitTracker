@@ -18,6 +18,7 @@ namespace W {
 #define CODEFORINVALIDHANDLE		0xC0000008
 #define CODEFORSTATUSPORTNOTSET		0xC0000353
 #define NTSTATUS_STATUS_BREAKPOINT	0x80000003L
+#define NTSTATUS_STATUS_SINGLE_STEP	0x80000004L
 
 // some constants
 #define PROCESS_DEBUG_INHERIT 0x00000001 // default for a non-debugged process, used inside HOOKS_NtQueryInformationProcess_exit
