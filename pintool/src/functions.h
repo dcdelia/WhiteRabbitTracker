@@ -86,8 +86,8 @@ VOID GetUsernameEntry(W::LPTSTR* lpBuffer, W::LPDWORD* nSize);
 VOID GetUsernameExit(CONTEXT* ctx, ADDRINT esp);
 VOID FindWindowHookEntry(CONTEXT* ctx, W::LPCTSTR* path1, W::LPCTSTR* path2);
 VOID FindWindowHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp);
-VOID CloseHandleHookEntry(W::HANDLE* handle);
-VOID CloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp);
+VOID NtCloseHandleHookEntry(W::HANDLE* handle);
+VOID NtCloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp);
 VOID WMIQueryHookEntry(W::LPCWSTR* query, W::VARIANT** var);
 VOID WMIQueryHookExit(thread_ctx_t* thread_ctx);
 

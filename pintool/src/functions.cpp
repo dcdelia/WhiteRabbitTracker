@@ -386,10 +386,10 @@ namespace Functions {
 							IARG_END);
 						break;
 					case(CLOSEH_INDEX):
-						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)CloseHandleHookEntry,
+						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)NtCloseHandleHookEntry,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 0,
 							IARG_END);
-						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)CloseHandleHookExit,
+						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)NtCloseHandleHookExit,
 							IARG_CONTEXT,
 							IARG_FUNCRET_EXITPOINT_REFERENCE,
 							IARG_REG_VALUE, REG_STACK_PTR,
@@ -1197,19 +1197,22 @@ VOID FindWindowHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp) {
 	}
 }
 
-VOID CloseHandleHookEntry(W::HANDLE* handle) {
+VOID NtCloseHandleHookEntry(W::HANDLE* handle) {
 	State::apiOutputs* apiOutputs = State::getApiOutputs();
-	OBJECT_HANDLE_FLAG_INFORMATION flags;
-	flags.ProtectFromClose = 0;
-	flags.Inherit = 0;
 
 	if (BYPASS(BP_CLOSEHANDLE)) {
+		OBJECT_HANDLE_FLAG_INFORMATION flags;
+		flags.ProtectFromClose = 0;
+		flags.Inherit = 0;
 		W::HANDLE ret = W::CreateMutex(NULL, FALSE, BP_MUTEX);
 		// CloseHandle with status = STATUS_HANDLE_NOT_CLOSABLE
 		if (W::NtQueryObject(*handle, (W::OBJECT_INFORMATION_CLASS)4, &flags, sizeof(OBJECT_HANDLE_FLAG_INFORMATION), 0) >= 0) {
 			if (flags.ProtectFromClose) {
 				apiOutputs->closeHandleStatus = 1;
 				*handle = ret;
+			}
+			else {
+				apiOutputs->closeHandleStatus = 0;
 			}
 		}
 		// CloseHandle with status = INVALID_HANDLE
@@ -1220,8 +1223,8 @@ VOID CloseHandleHookEntry(W::HANDLE* handle) {
 	}
 }
 
-VOID CloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp) {
-	CHECK_ESP_RETURN_ADDRESS(esp);
+VOID NtCloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp) {
+	// NOTE we cannot check return address here since we are working on NtCloseHandle directly...
 	State::apiOutputs* apiOutputs = State::getApiOutputs();
 
 	if (BYPASS(BP_CLOSEHANDLE)) {
