@@ -544,7 +544,7 @@ libdft_init(ADDRINT version_mask)
 	return 0;
 }
 
-int libdft_init_data_only() {
+int libdft_init_data_only(bool disableTracing) {
 	/* initialize thread contexts; optimized branch */
 	thread_ctx_ptr = PIN_ClaimToolRegister();
 
@@ -562,7 +562,8 @@ int libdft_init_data_only() {
 	(void)memset(ins_desc, 0, sizeof(ins_desc));
 
 	/* register trace_ins() to be called for every trace */
-	TRACE_AddInstrumentFunction(trace_inspect, (VOID *)0);
+	if (!disableTracing)
+		TRACE_AddInstrumentFunction(trace_inspect, (VOID *)0);
 
 	return 0;
 }

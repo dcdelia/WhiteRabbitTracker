@@ -71,6 +71,8 @@ VOID GetDeviceDriverBaseNameHookExit(CONTEXT* ctx, ADDRINT esp);
 VOID GetAdaptersInfoEntry(PIP_ADAPTER_INFO* adapInfo, W::PULONG* size);
 VOID GetAdaptersInfoExit(CONTEXT* ctx, ADDRINT ret, ADDRINT esp);
 VOID EnumDisplaySettingsEntry(W::LPCTSTR* devName, CONTEXT* ctx);
+VOID EnumServicesStatusExHookEntry(W::ENUM_SERVICE_STATUS_PROCESSW* lpServices, W::LPDWORD lpServicesReturned);
+VOID EnumServicesStatusExHookExit(CONTEXT* ctx, ADDRINT esp);
 VOID SetupDiGetDeviceRegistryPropertyHookEntry(W::PBYTE* buffer, W::DWORD size);
 VOID SetupDiGetDeviceRegistryPropertyHookExit(CONTEXT* ctx, ADDRINT ret);
 VOID SetTimerEntry(CONTEXT* ctx, W::UINT* time);
@@ -167,6 +169,7 @@ enum {
 	GETUSERNAME_INDEX,
 	FINDWINDOW_INDEX,
 	CLOSEH_INDEX,
+	ENUMSERVICESSTATUS_INDEX,
 	WMI_INDEX
 };
 

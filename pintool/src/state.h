@@ -10,6 +10,7 @@ extern BOOL _knobApiTracing;
 extern BOOL _knobBypass;
 extern BOOL _knobLeak;
 extern BOOL _knobAlertSystemCode;
+extern BOOL _knobNoTainting;
 extern int _alertApiTracingCounter;
 
 namespace State {
@@ -61,6 +62,10 @@ namespace State {
 		W::DWORD lpDeviceRegistryBufferSize;
 		ADDRINT  lpLoadLibraryArg;
 
+		struct enumServicesStatusInfo {
+			W::ENUM_SERVICE_STATUS_PROCESSW* lpServices;
+			W::LPDWORD lpServicesReturned;
+		} _enumServicesStatusInfo;
 		struct moduleFileNameInformations {
 			W::LPSTR lpModuleName;
 			W::DWORD lpNSize;

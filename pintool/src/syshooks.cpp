@@ -98,6 +98,48 @@ namespace SYSHOOKS {
 	}
 
 	/* ===================================================================== */
+	/* NtQueryObject - Transplanted from BluePill                            */
+	/* ===================================================================== */
+	VOID NtQueryObject_exit(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std) {
+		// TODO: BYPASS and proper handling of ntQueryCounter
+		if (sc->arg1 == 3) { // credits: Al-Khaser
+			FetchGlobalState;
+			gs->ntQueryCounter = (gs->ntQueryCounter + 1) % 2;
+
+			if (gs->ntQueryCounter != 0)
+				return;
+
+			POBJECT_ALL_INFORMATION pObjectAllInfo = (POBJECT_ALL_INFORMATION)sc->arg2;
+			W::ULONG NumObjects = pObjectAllInfo->NumberOfObjects;
+			W::UCHAR* pObjInfoLocation = (W::UCHAR*)pObjectAllInfo->ObjectTypeInformation;
+
+			for (UINT i = 0; i < NumObjects; i++) {
+
+				POBJECT_TYPE_INFORMATION pObjectTypeInfo = (POBJECT_TYPE_INFORMATION)pObjInfoLocation;
+
+				if (wcscmp(L"DebugObject", pObjectTypeInfo->TypeName.Buffer) == 0) {
+					if (pObjectTypeInfo->TotalNumberOfObjects > 0) {
+						logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NtQueryObject");
+						pObjectTypeInfo->TotalNumberOfObjects = 0;
+					}
+				}
+
+				pObjInfoLocation = (unsigned char*)pObjectTypeInfo->TypeName.Buffer;
+
+				pObjInfoLocation += pObjectTypeInfo->TypeName.MaximumLength;
+
+				// TODO check this
+				W::ULONG_PTR tmp = ((W::ULONG_PTR)pObjInfoLocation) & -(int)sizeof(void*);
+
+				if ((W::ULONG_PTR)tmp != (W::ULONG_PTR)pObjInfoLocation)
+					tmp += sizeof(void*);
+				pObjInfoLocation = ((unsigned char*)tmp);
+			}
+		}
+
+	}
+
+	/* ===================================================================== */
 	/* Handle the NtDelayExecution API                                       */
 	/* ===================================================================== */
 	VOID NtDelayexecution_entry(syscall_t* sc, CONTEXT* ctx, SYSCALL_STANDARD std) {
@@ -329,6 +371,12 @@ namespace SYSHOOKS {
 					logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessDebugPort");
 					*((W::HANDLE *)ProcessInformation) = (W::HANDLE)0;
 				}
+			}
+			else if (ProcessInformationClass == ProcessBasicInformation) //Fake parent
+			{
+				// TODO high false positives rate
+				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessBasicInformation");
+				((PPROCESS_BASIC_INFORMATION)ProcessInformation)->InheritedFromUniqueProcessId = (W::HANDLE)Helper::GetProcessIdByName("explorer.exe"); // TODO PID okay?
 			}
 			if (backupReturnLength != 0) {
 				*ReturnLength = backupReturnLength;

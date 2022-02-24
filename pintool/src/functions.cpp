@@ -99,7 +99,8 @@ namespace Functions {
 		fMap.insert(std::pair<std::string, int>("FindWindow", FINDWINDOW_INDEX));
 		fMap.insert(std::pair<std::string, int>("FindWindowW", FINDWINDOW_INDEX));
 		fMap.insert(std::pair<std::string, int>("FindWindowA", FINDWINDOW_INDEX));
-		fMap.insert(std::pair<std::string, int>("NtClose", CLOSEH_INDEX)); 
+		fMap.insert(std::pair<std::string, int>("NtClose", CLOSEH_INDEX));
+		fMap.insert(std::pair<std::string, int>("EnumServicesStatusExW", ENUMSERVICESSTATUS_INDEX)); // TODO A version too
 		fMap.insert(std::pair<std::string, int>("?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z", WMI_INDEX));
 	}
 
@@ -394,6 +395,16 @@ namespace Functions {
 							IARG_REG_VALUE, REG_STACK_PTR,
 							IARG_END);
 						break;
+					case(ENUMSERVICESSTATUS_INDEX):
+						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)EnumServicesStatusExHookEntry,
+							IARG_FUNCARG_ENTRYPOINT_VALUE, 4,
+							IARG_FUNCARG_ENTRYPOINT_VALUE, 7,
+							IARG_END);
+						RTN_InsertCall(rtn, IPOINT_AFTER, (AFUNPTR)EnumServicesStatusExHookExit,
+							IARG_CONTEXT,
+							IARG_REG_VALUE, REG_STACK_PTR,
+							IARG_END);
+						break;
 					case(WMI_INDEX):
 						RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)WMIQueryHookEntry,
 							IARG_FUNCARG_ENTRYPOINT_REFERENCE, 1,
@@ -422,7 +433,7 @@ static VOID taintRegisterEax(CONTEXT* ctx, uint8_t color) {
 VOID IsDebuggerPresentExit(CONTEXT* ctx, ADDRINT* ret, ADDRINT esp) {
 	CHECK_ESP_RETURN_ADDRESS(esp);
 	if (BYPASS(BP_ISDEBUGGERPRESENT)) {
-		*ret = FALSE;
+		*ret = FALSE; // redundant really, unless PinADX is used?
 		logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "IsDebuggerPresent");
 	}
 	uint8_t color = GET_TAINT_COLOR(TT_ISDEBUGGERPRESENT);
@@ -1222,6 +1233,44 @@ VOID CloseHandleHookExit(CONTEXT* ctx, W::BOOL* ret, ADDRINT esp) {
 			W::SetLastError(ERROR_INVALID_HANDLE);
 			*ret = CODEFORINVALIDHANDLE;
 			logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), "CloseHandle STATUS_INVALID_HANDLE");
+		}
+	}
+}
+
+VOID EnumServicesStatusExHookEntry(W::ENUM_SERVICE_STATUS_PROCESSW* lpServices, W::LPDWORD lpServicesReturned) {
+	State::apiOutputs* apiOutputs = State::getApiOutputs();
+	apiOutputs->_enumServicesStatusInfo.lpServices = lpServices;
+	apiOutputs->_enumServicesStatusInfo.lpServicesReturned = lpServicesReturned;
+}
+
+VOID EnumServicesStatusExHookExit(CONTEXT* ctx, ADDRINT esp) {
+	CHECK_ESP_RETURN_ADDRESS(esp);
+	State::apiOutputs* apiOutputs = State::getApiOutputs();
+
+	W::ENUM_SERVICE_STATUS_PROCESSW* lpServices = apiOutputs->_enumServicesStatusInfo.lpServices;
+	if (lpServices) {
+		W::DWORD services = *apiOutputs->_enumServicesStatusInfo.lpServicesReturned;
+		W::ENUM_SERVICE_STATUS_PROCESSW* first = lpServices;
+		char value[PATH_BUFSIZE];
+		for (W::DWORD i = 0; i < services; i++) { // TODO add if (BYPASS)
+			bool shallPatch = false;
+			memset(value, 0, PATH_BUFSIZE);
+			GET_STR_TO_UPPER(lpServices->lpServiceName, value, PATH_BUFSIZE);
+			if (strstr(value, "VIRTUALBOX") != NULL || strstr(value, "VBOX") != NULL) shallPatch = true;
+			memset(value, 0, PATH_BUFSIZE);
+			GET_STR_TO_UPPER(lpServices->lpDisplayName, value, PATH_BUFSIZE);
+			if (strstr(value, "VIRTUALBOX") != NULL || strstr(value, "VBOX") != NULL) shallPatch = true;
+			if (shallPatch) { // TODO add if bypass
+				if (i == 0) {
+					std::cerr << "Sorry, come up with a better patching strategy for EnumServicesStatusEx" << std::endl;
+					exit(0);
+				}
+				PIN_SafeCopy((VOID*)lpServices, (VOID*)(first), sizeof(W::ENUM_SERVICE_STATUS_PROCESSW));
+				char logName[64];
+				sprintf(logName, "EnumServicesStatusEx entry %d", i);
+				logInfo->logBypass(GET_INTERNAL_CLOCK(ctx), logName);
+			}
+			++lpServices;
 		}
 	}
 }

@@ -13,6 +13,7 @@ BOOL _knobApiTracing;
 BOOL _knobBypass;
 BOOL _knobLeak;
 BOOL _knobAlertSystemCode;
+BOOL _knobNoTainting;
 int _alertApiTracingCounter;
 
 namespace State {

@@ -38,6 +38,8 @@ KNOB<BOOL> knobApiTracing(KNOB_MODE_WRITEONCE, "pintool", "trace", "false", "Ena
 KNOB<BOOL> knobBypass(KNOB_MODE_WRITEONCE, "pintool", "bypass", "false", "Enable return value bypass for APIs and instructions to avoid sandbox/VM detection (disabled by default)");
 KNOB<BOOL> knobLeak(KNOB_MODE_WRITEONCE, "pintool", "leak", "false", "Enable bypass to avoid leaks of real EIP through FPU instructions (disabled by default)");
 KNOB<BOOL> knobSystemCodeAlert(KNOB_MODE_WRITEONCE, "pintool", "alertSystemCode", "false", "Enable taint alert for tainted system code (disabled by default)");
+KNOB<BOOL> knobNoTainting(KNOB_MODE_WRITEONCE, "pintool", "notaint", "false", "Disable taint tracking (helpful with -bypass only, disabled by default)");
+
 
 /* ============================================================================= */
 /* Define macro to check the instruction address and check if is program code    */
@@ -90,18 +92,28 @@ VOID handleInt2d(CONTEXT* ctx, THREADID tid, ADDRINT eip) {
 	PIN_RaiseException(ctx, tid, &exc);
 }
 
+bool isHandlingPopFd = FALSE;
+
 VOID handlePopFd(CONTEXT* ctx, THREADID tid, ADDRINT eip, ADDRINT esp) {
 	ADDRINT eflags = *((ADDRINT*)esp);
 	if (!(eflags & 0x100)) return; // benign popfd
 
 	std::cerr << std::hex << eip << " popf PLAYING WITH TRAP FLAG HERE!" << std::endl;
-	
+
+	*((ADDRINT*)esp) = eflags & (~0x100);
+	isHandlingPopFd = TRUE;
+	PIN_RemoveInstrumentationInRange(eip + 1, eip + 20); // +20 to be on the safe side
+}
+
+VOID handlePopFdAfter(CONTEXT* ctx, THREADID tid, ADDRINT eip, ADDRINT esp) {
+	static int count = 0;
+	if (!count++) return; // skip very first instruction
+
+	*((ADDRINT*)(esp-4)) |= 1UL << 8;; // restore wiped trap flag
 	EXCEPTION_INFO exc;
 	PIN_InitWindowsExceptionInfo(&exc, NTSTATUS_STATUS_SINGLE_STEP, eip);
-	eflags |= 1UL << 8;
-	PIN_SetContextReg(ctx, REG_STACK_PTR, esp + 4); // consume stack element
-	PIN_SetContextReg(ctx, REG_INST_PTR, eip + 0x1); // advance EIP
-	PIN_SetContextReg(ctx, REG_EFLAGS, eflags); // restore other flags
+	isHandlingPopFd = FALSE;
+	count = 0;
 	PIN_RaiseException(ctx, tid, &exc);
 }
 
@@ -109,7 +121,12 @@ VOID handlePopFd(CONTEXT* ctx, THREADID tid, ADDRINT eip, ADDRINT esp) {
 /* AOT instrumentation for some instructions (more stable than TRACE)    */
 /* ===================================================================== */
 VOID InstrumentInstructionAOT(INS ins, VOID* v) {
-	// TODO optimizations varie
+	if (isHandlingPopFd) {
+		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)handlePopFdAfter,
+			IARG_CONTEXT, IARG_THREAD_ID,
+			IARG_INST_PTR, IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
+	}
+	// TODO optimizations
 	if (INS_IsInterrupt(ins) && INS_Disassemble(ins).find("int 0x2d") != string::npos) {
 		if (BYPASS(BP_INT2D)) {
 			INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)handleInt2d,
@@ -459,6 +476,118 @@ INT32 Usage() {
 	return -1;
 }
 
+/* ===================================================================== */
+/* Heavy-duty debugger for pinpointing unsupported evasions              */
+/* ===================================================================== */
+VOID DirtyDebugForNewEvasion(const char* apiname, ADDRINT esp, ADDRINT arg0,
+	ADDRINT arg1, ADDRINT arg2, ADDRINT arg3, ADDRINT arg4, ADDRINT arg5, ADDRINT arg6, ADDRINT arg7) {
+	CHECK_EIP_ADDRESS(*(ADDRINT*)esp);
+	int argIdx = 0;
+
+	std::cerr << "Arguments for API " << apiname << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg0 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg1 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg2 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg3 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg4 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg5 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg6 << std::endl;
+	std::cerr << argIdx++ << " " << std::hex << arg7 << std::endl;
+}
+
+VOID InstrumentRoutineCallback(const char* apiname, ADDRINT esp) {
+	static int count = 0;
+	//CHECK_EIP_ADDRESS(*(ADDRINT*)esp);
+	State::globalState* gs = State::getGlobalState();
+	itreenode_t* node = itree_search(gs->dllRangeITree, *(ADDRINT*)esp);
+
+	char buf[MAX_PATH];
+	if (node != NULL) {
+#if 0
+		sprintf(buf, "====> %s", apiname); // internal calls
+		gs->logInfo->logMisc(std::string(buf));
+#endif
+	}
+	else {
+		sprintf(buf, "%x %s", count++, apiname); // program call (with ID)
+		gs->logInfo->logMisc(std::string(buf));
+	}
+}
+
+static VOID InstrumentRoutine(RTN rtn, VOID*) {
+	const char* rtnName = RTN_Name(rtn).c_str();
+
+	if (!strcmp(rtnName, "ExpInterlockedPopEntrySListResume") ||
+		!strcmp(rtnName, "LocalAlloc") ||
+		!strcmp(rtnName, "LocalFree") || 
+		!strcmp(rtnName, "RtlEnterCriticalSection") ||
+		!strcmp(rtnName, "RtlLeaveCriticalSection") ||
+		!strcmp(rtnName, "KiUserCallbackDispatcher")) return;
+
+	RTN_Open(rtn);
+	RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)InstrumentRoutineCallback,
+		IARG_ADDRINT, rtnName,
+		IARG_REG_VALUE, REG_STACK_PTR,
+		IARG_END);
+	/*if (!strcmp(rtnName, "EnumServicesStatusExW") || !strcmp(rtnName, "LoadLibraryA")) {
+		RTN_InsertCall(rtn, IPOINT_BEFORE, (AFUNPTR)DirtyDebugForNewEvasion,
+			IARG_ADDRINT, rtnName,
+			IARG_REG_VALUE, REG_STACK_PTR,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 1,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 2,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 3,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 4,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 5,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 6,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 7,
+			IARG_END);
+	}*/
+
+	RTN_Close(rtn);
+}
+
+STATIC VOID patchPEB() {
+	PEB32* peb32 = NULL;
+	PEB64* peb64 = NULL;
+
+	W::BOOL bWow64;
+	W::IsWow64Process((W::HANDLE)(-1), &bWow64);
+	BOOL isWow64 = (bWow64 != 0);
+
+	if (isWow64) {
+		W::BYTE* teb32; // = (W::BYTE*)W::NtCurrentTeb();
+		__asm {
+			mov eax, fs:18h
+			mov teb32, eax
+		}
+		W::BYTE* teb64 = teb32 - 0x2000;
+		peb32 = (PEB32*)(*(W::DWORD*)(teb32 + 0x30));
+		peb64 = (PEB64*)(*(W::DWORD64*)(teb64 + 0x60));
+	}
+	else {
+		__asm {
+			mov eax, fs:30h
+			mov peb32, eax
+		}
+	}
+
+	// patch PEB32
+	W::DWORD zero = 0;
+	//W::ULONG numCores = BP_NUMCORES;
+	W::HANDLE hProc = (W::HANDLE)(-1);
+
+	//W::WriteProcessMemory(hProc, (&peb32->NumberOfProcessors), &numCores, sizeof(W::DWORD), 0);
+	W::WriteProcessMemory(hProc, (&peb32->BeingDebugged), &zero, sizeof(W::BYTE), 0);
+	W::WriteProcessMemory(hProc, (&peb32->NtGlobalFlag), &zero, sizeof(W::DWORD), 0);
+
+	if (isWow64) {
+		//W::WriteProcessMemory(hProc, (W::LPVOID)(&peb64->NumberOfProcessors), &numCores, sizeof(W::DWORD), 0);
+		W::WriteProcessMemory(hProc, (&peb64->BeingDebugged), &zero, sizeof(W::BYTE), 0);
+		W::WriteProcessMemory(hProc, (&peb64->NtGlobalFlag), &zero, sizeof(W::DWORD), 0);
+	}
+}
+
 /* =================================================================================================== */
 /* Main function                                                                                       */
 /* =================================================================================================== */
@@ -483,6 +612,7 @@ int main(int argc, char * argv[]) {
 	_knobLeak = knobLeak.Value();
 	_knobApiTracing = knobApiTracing.Value();
 	_knobAlertSystemCode = knobSystemCodeAlert.Value();
+	_knobNoTainting = knobNoTainting.Value();
 
 	// Initialize global state information
 	State::init();
@@ -571,7 +701,7 @@ int main(int argc, char * argv[]) {
 	PIN_AddThreadFiniFunction(OnThreadFini, NULL);
 
 	// Initialize libdft engine
-	if (libdft_init_data_only()) {
+	if (libdft_init_data_only(_knobNoTainting)) {
 		std::cerr << "Error during libdft initialization!" << std::endl;
 		PIN_ExitProcess(1);
 	}
@@ -587,6 +717,12 @@ int main(int argc, char * argv[]) {
 	std::cerr << "This application is instrumented by " << TOOL_NAME << " v." << VERSION << std::endl;
 	std::cerr << "Profiling module " << appName << std::endl;
 	std::cerr << "===============================================" << std::endl;
+
+	// routine instrumentation (for debugging/development only)
+	RTN_AddInstrumentFunction(InstrumentRoutine, NULL);
+
+	// some late patching :-)
+	patchPEB();
 
 	// Start the program, never returns
 	PIN_StartProgram();

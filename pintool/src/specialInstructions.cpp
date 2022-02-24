@@ -214,7 +214,7 @@ void SpecialInstructionsHandler::AlterCpuidValues(ADDRINT ip, CONTEXT * ctxt, AD
 		UINT32 mask = 0xFFFFFFFFULL;
 		_ecx &= (mask >> 1);
 		if ((*cpuidCount) <= MAX_CPUID)
-			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x1");
+			classHandler->logInfo->logBypass(GET_INTERNAL_CLOCK(ctxt), "CPUID 0x1"); // TODO BP_CPUID
 		
 		if (color) {
 			TAINT_TAG_REG(ctxt, GPR_ECX, color, color, color, color); // very high load

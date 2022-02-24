@@ -191,8 +191,8 @@ typedef struct {
 int	libdft_init(ADDRINT version_mask = 0);
 void	libdft_die(void);
 
-/* integration with DBI Blue Pill */
-int libdft_init_data_only();
+/* integration with WhiteRabbitTracker & BluePill */
+int libdft_init_data_only(bool disableTracing);
 thread_ctx_t* libdft_thread_start(CONTEXT *ctx);
 void libdft_thread_fini(const CONTEXT *ctx);
 void libdft_trace_inspect(TRACE trace, VOID *v);

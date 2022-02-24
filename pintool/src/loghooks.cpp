@@ -43,7 +43,7 @@ namespace Functions {
 		"SetProcessDEPPolicy","SetThreadContext","SuspendThread","ResumeThread",
 		"AdjustTokenPrivileges","NtAdjustPrivilegesToken","CreateProcessWithTokenW",
 		"NtResumeThread","NtQueueApcThread","NtQueueApcThreadEx","NtQueueApcThreadEx2",
-		// service stuff
+		// service stuff - TODO W versions? also, OpenSCManagerW can be used for evasion
 		"ControlService","ControlServiceExA","CreateServiceA","DeleteService",
 		"OpenSCManagerA","OpenServiceA","StartServiceA","StartServiceCtrlDispatcherA",
 		// registry stuff

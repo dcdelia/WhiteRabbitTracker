@@ -255,6 +255,8 @@ namespace SYSHOOKING {
 		// Handle the NtQueryAttributesFile API (file information access) 
 		sysEntryHooks[lookupIndex("NtQueryAttributesFile")] = &SYSHOOKS::NtQueryAttributesFile_entry;
 		sysExitHooks[lookupIndex("NtQueryAttributesFile")] = &SYSHOOKS::NtQueryAttributesFile_exit;
+		// From BluePill
+		sysExitHooks[lookupIndex("NtQueryObject")] = &SYSHOOKS::NtQueryObject_exit;
 		// Win32 system APIs (embedded ordinals)
 		win32sysExitHooks[NTUSERFINDWINDOWSEX] = &SYSHOOKS::NtUserFindWindowEx_exit;
 

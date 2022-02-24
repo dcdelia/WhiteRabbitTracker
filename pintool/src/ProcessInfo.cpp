@@ -203,6 +203,8 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 	W::HANDLE hMapSrcFile = W::CreateFileMapping(hSrcFile, NULL, PAGE_READONLY, 0, 0, NULL);
 	W::PBYTE pImageBase = (W::PBYTE)W::MapViewOfFile(hMapSrcFile, FILE_MAP_READ, 0, 0, 0);
 
+	bool returnValue = false;
+
 	W::PIMAGE_DOS_HEADER dosHeader = (W::PIMAGE_DOS_HEADER)pImageBase;
 
 	// Get pointers to 32 and 64 bit versions of the header.
@@ -210,7 +212,7 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 
 	if (pNTHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
 		std::cerr << "64-bit header unsupported yet (DDL exports parsing)!" << std::endl;
-		return false;
+		goto CLEANUP;
 	}
 
 	W::PIMAGE_EXPORT_DIRECTORY pExportDir;
@@ -226,7 +228,7 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 	header = peGetEnclosingSectionHeader(exportsStartRVA, pNTHeader);
 	if (!header) {
 		std::cerr << "Could not find exports header in PE during DLL exports parsing!" << std::endl;
-		return false;
+		goto CLEANUP;
 	}
 
 	pExportDir = (W::PIMAGE_EXPORT_DIRECTORY)peGetPtrFromRVA(exportsStartRVA, pNTHeader, pImageBase);
@@ -235,7 +237,7 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 	pszFuncNames = (W::PDWORD)peGetPtrFromRVA(pExportDir->AddressOfNames, pNTHeader, pImageBase);
 	if (!pExportDir || !pdwFunctions || !pwOrdinals || !pszFuncNames) {
 		std::cerr << "Some PE fields are just not okay during DLL exports parsing!" << std::endl;
-		return false;
+		goto CLEANUP;
 	}
 	size_t forwarders = 0, data = 0;
 	size_t unnamed = pExportDir->NumberOfFunctions - pExportDir->NumberOfNames;
@@ -262,5 +264,14 @@ bool ProcessInfo::parseExportTable(const char* dllPath, ADDRINT baseAddress, std
 			rvaToFileOffsetMap.insert(std::make_pair(rva, fileOffset));
 		}
 	}
-	return true;
+
+	returnValue = true;
+
+CLEANUP:
+	// also avoids anti-dbg trick based on exclusive access upon CreateFile (see ShowStopper's LoadLibrary)
+	W::UnmapViewOfFile(pImageBase);
+	W::CloseHandle(hMapSrcFile);
+	W::CloseHandle(hSrcFile);
+
+	return returnValue;
 }
