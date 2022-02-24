@@ -303,22 +303,22 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo) {
 /* ===================================================================== */
 /* Function to handle context change and retrieve exception reason       */
 /* ===================================================================== */
-static void OnCtxChange(THREADID threadIndex, CONTEXT_CHANGE_REASON reason, const CONTEXT *ctxtFrom, CONTEXT *ctxtTo, INT32 info, VOID *v) {
+void OnCtxChange(THREADID threadIndex, CONTEXT_CHANGE_REASON reason, const CONTEXT *ctxtFrom, CONTEXT *ctxtTo, INT32 info, VOID *v) {
 	// Check if context variable exists
-	if (ctxtTo == NULL || ctxtFrom == NULL) {
-		return;
-	}
+	//if (ctxtTo == NULL || ctxtFrom == NULL) return;
+	if (ctxtFrom == NULL) return;
+	
 	// Update global variables on Windows generic exception
-	if (reason == CONTEXT_CHANGE_REASON_EXCEPTION) { 
+	/*if (reason == CONTEXT_CHANGE_REASON_EXCEPTION) {
 		FetchGlobalState;
-	}
+	}*/
 	// Enter critical section (ensure that we can call PIN APIs)
-	PIN_LockClient();
+	//PIN_LockClient();
 	// Extract address from and address to from the registry context
 	const ADDRINT addrFrom = (ADDRINT)PIN_GetContextReg(ctxtFrom, REG_INST_PTR);
-	const ADDRINT addrTo = (ADDRINT)PIN_GetContextReg(ctxtTo, REG_INST_PTR);
+	//const ADDRINT addrTo = (ADDRINT)PIN_GetContextReg(ctxtTo, REG_INST_PTR);
 	// Add logging based on reason
-	std::string reasonDescription = "";
+	char* reasonDescription = "unknown";
 	switch(reason) {
 		case CONTEXT_CHANGE_REASON_FATALSIGNAL:
 			reasonDescription = "fatal unix signal";
@@ -342,7 +342,7 @@ static void OnCtxChange(THREADID threadIndex, CONTEXT_CHANGE_REASON reason, cons
 	// Log the exception
 	logInfo.logException(addrFrom, reasonDescription);
 	// Exit critical section
-	PIN_UnlockClient();
+	//PIN_UnlockClient();
 }
 
 
@@ -719,7 +719,8 @@ int main(int argc, char * argv[]) {
 	std::cerr << "===============================================" << std::endl;
 
 	// routine instrumentation (for debugging/development only)
-	RTN_AddInstrumentFunction(InstrumentRoutine, NULL);
+	// TODO can break thread interleaving? see InstructionCounting from ShowStopper
+	//RTN_AddInstrumentFunction(InstrumentRoutine, NULL); 
 
 	// some late patching :-)
 	patchPEB();
