@@ -12,10 +12,12 @@ class TaintedChunk:
         self.name = name
         self.left = None
         self.right = None
+        self.max = end
 
 def insertTaintedChunk(root: TaintedChunk, start: int, end: int, xorValue: str, colour: int, name: str):
     if root.start == start and root.end == end and root.colour == colour and root.name == name:
         return False
+    root.max = end if root.max < end else root.max
     # right subtree
     if root.end < start:
         if root.right:
@@ -43,3 +45,17 @@ def searchTaintedChunk(root: TaintedChunk, address: int):
     else:
         return searchTaintedChunk(root.left, address)
     return None
+
+def doOverlap(start1: int, end1: int, start2: int, end2:int):
+    if start1 <= end2 and start2 <= end1:
+        return True
+    return False
+
+def overlapSearch(root: TaintedChunk, start: int, end: int):
+    if not root:
+        return None
+    if doOverlap(root.start, root.end, start, end):
+        return root
+    if root.left and root.left.max >= start:
+        return overlapSearch(root.left, start, end)
+    return overlapSearch(root.right, start, end)

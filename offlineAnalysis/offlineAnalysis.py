@@ -11,16 +11,20 @@ def getDictConsumers(directoryTaintedLogs):
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
 			with open(directoryTaintedLogs + logFile) as f:
-				logContent = [x.strip() for x in f.readlines()]
-				for log in logContent:
-					splittedLog = log.split(" ")
+				for line in f:
+					splittedLog = line.strip().split(" ")
 					# consider only taint logs that involves memory areas
 					memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
+					# format example:
+					# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
+					# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
+					# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
+					# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
 					instructionType = splittedLog[0].replace(";", "")
 					if instructionType in memoryLogs:
-						cons = int(splittedLog[1], 16)
+						cons = int(splittedLog[1], 16) # address of instruction
 						memAddressIndex = 5 if instructionType == "reg-mem" else 4
-						memAddress = splittedLog[memAddressIndex].split("(")[0]
+						memAddress = splittedLog[memAddressIndex].split("(")[0] # width
 						# first time we encounter that cons
 						if cons not in consumers.keys():
 							consumers[cons] = [int(memAddress, 16)]
@@ -28,6 +32,7 @@ def getDictConsumers(directoryTaintedLogs):
 						else:
 							if int(memAddress, 16) not in consumers[cons]:
 								consumers[cons].append(int(memAddress, 16))
+						# BEWARE it is not keeping track of the size here
 	return consumers
 
 
@@ -41,22 +46,48 @@ def populateTaintedChunks(directoryTaintedLogs):
 	for logFile in logFiles:
 		# consider only memory areas logs
 		if "mem" in logFile:
+			print(f"Logfile: {logFile}")
 			with open(directoryTaintedLogs + logFile) as f:
-				logContent = [x.strip() for x in f.readlines()]
-				for log in logContent:
-					splittedLog = log.split(" ")
+				for line in f:
+					splittedLog = line.strip().split(" ")
+					# format example
+					# - NtQueryAttributesFile 0x76fc46c4 0x001a781c 0x001a7844
+					# 0x001a7820 0x001a7824 [1]
+					# 0x001a781c 0x001a7820 [1]
 					if splittedLog[0] == "-":
-						hook_id = (splittedLog[1], int(splittedLog[2], 16))
-						memoryRange = (int(splittedLog[3], 16), int(splittedLog[4], 16))
+						hook_id = (splittedLog[1], int(splittedLog[2], 16)) # name, ctxt hash
+						memoryRange = (int(splittedLog[3], 16), int(splittedLog[4], 16)) # start, end
 						prodLargeRange[hook_id] = memoryRange
 					else:
 						memoryRange = (int(splittedLog[0], 16), int(splittedLog[1], 16))
-						if hook_id not in prodMap.keys():
+						if hook_id not in prodMap.keys(): # hook_id from "- <ID> <ctxt> <start> <end>" line
 							prodMap[hook_id] = [memoryRange]
 						else:
-							if memoryRange not in prodMap[hook_id]:
+							if memoryRange not in prodMap[hook_id]: # avoid duplicates
 								prodMap[hook_id].append(memoryRange)
+	scz = 0
 	for prod in prodMap:
+		print(f"MemoryRange {scz} {prod}")
+		scz = scz + 1
+		
+		sortedRanges = sorted(prodMap[prod], key=lambda k: (-(k[1]-k[0])))
+		for idx, range in enumerate(sortedRanges):
+			start, end = range
+			if root is None:
+				root = TaintedChunk(start, end, prod[1], 1, prod[0])
+			else:
+				node = overlapSearch(root, start, end)
+				if node is None:
+					insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
+				else:
+					if (node.start <= start < node.end) and (node.start <= end <= node.end):
+						pass # OK CASE
+					elif start == node.end or node.start == end: # adjacent intervals
+						insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
+					else:
+						print(f"SKIPPING A BROKEN NODE! See {start:x}, {end:x} vs. {node.start:x}, {node.end:x}")
+				
+		'''
 		memoryRanges = prodMap[prod]
 		memoryRanges.sort()
 		for idx, memoryRange in enumerate(memoryRanges):
@@ -71,7 +102,10 @@ def populateTaintedChunks(directoryTaintedLogs):
 			if root is None:
 				root = TaintedChunk(start, end, prod[1], 1, prod[0])
 			else:
+				if scz < 100:
+					print(f"Range is {start:x}-{end:x}")
 				insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
+		'''
 
 	return root, prodLargeRange
 
@@ -107,6 +141,10 @@ def fTechnique(directoryTaintedLogs):
 					instructionType = splittedLog[0].replace(";", "")
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
+						# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
+						# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
+						# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
+						# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
 						ipAddress = int(splittedLog[1], 16)
 						assertType = int(splittedLog[6])
 						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
@@ -126,7 +164,7 @@ def fTechnique(directoryTaintedLogs):
 	ins = 0x00000000
 	# for all bytes in the map
 	for bytesIns in byteInsDict.keys():
-		byteInsDict[bytesIns].sort()
+		byteInsDict[bytesIns].sort() # TODO why is this needed? for breaking ties?
 		# for all instruction in the bytes-set
 		for currentIns in byteInsDict[bytesIns]:
 			insCount = insCounterDict[currentIns]
@@ -146,7 +184,7 @@ def fTechnique(directoryTaintedLogs):
 	chunkIndex = 1
 	definitiveChunks = {}  # dict<int, list<(chunkStart: int, chunkEnd: int)>
 	for chunk in preliminaryChunks.keys():
-		preliminaryChunks[chunk].sort()
+		preliminaryChunks[chunk].sort() # sort bytes associated to instruction
 		for idx, currentIns in enumerate(preliminaryChunks[chunk]):
 			chunkStart = currentIns
 			# determine chunks size
@@ -194,6 +232,10 @@ def findProdHeuristics(directoryTaintedLogs, definitiveChunksRoot):
 					instructionType = splittedLog[0].replace(";", "")
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
+						# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
+						# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
+						# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
+						# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
 						taintColor = int(splittedLog[2].replace("[", "").replace("]", ""))
 						assertType = int(splittedLog[6])
 						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
@@ -233,11 +275,14 @@ def addrColourToChunksRoot(definitiveChunksRoot, addrCols):
 		res = searchTaintedChunk(definitiveChunksRoot, address)
 		if res is not None:
 			res.colour = col
+
 def main():
 	# sanity check
 	if len(sys.argv) != 3:
 		print("Usage: python offlineAnalysis.py PATH_TO_TAINTED_LOGS PATH_TO_CALL_STACK_LOG (e.g. offlineAnalysis.py C:\\Pin315\\taint\\ C:\\Pin315\\callstack.log)")
 		return -1
+
+	sys.setrecursionlimit(1500)
 
 	directoryTaintedLogs = sys.argv[1]
 	callStackLog = sys.argv[2]
@@ -252,13 +297,13 @@ def main():
 	for handler in logging.root.handlers[:]:
 		logging.root.removeHandler(handler)
 	try:
-		f = open("offlineAnalysis.gv", "w")
+		f = open("graph.gv", "w")
 	except IOError:
-		print("File offlineAnalysis.gv not present, creating the file...")
+		print("File graph.gv not present, creating the file...")
 	finally:
 		f.close()
 
-	logging.basicConfig(filename="offlineAnalysis.gv", format='%(message)s', level=logging.INFO)
+	logging.basicConfig(filename="graph.gv", format='%(message)s', level=logging.INFO)
 
 	'''
 	Create a dictionary where the:
@@ -266,6 +311,8 @@ def main():
 		- value: list of addresses consumed by these consumers
 	'''
 	consumers = getDictConsumers(directoryTaintedLogs)
+	print(f"Number of consumers found: {len(consumers)}")
+
 	'''
 	Create an interval tree that contains the tainted memory areas during the program execution
 	'''
@@ -355,7 +402,7 @@ def main():
 						if rangeProd[currentRange] not in producerIds:
 							producerIds.append(rangeProd[currentRange])
 						if currentRange not in chunks:
-							chunks.append(currentRange)
+							chunks.append(currentRange) # TODO what changed? see a few lines above
 						if rangeProd[currentRange] not in producerIdsChunks.keys():
 							producerIdsChunks[rangeProd[currentRange]] = [currentRange]
 						else:
