@@ -306,7 +306,7 @@ mem_imm_alert(thread_ctx_t* thread_ctx, ADDRINT addr, ADDRINT size, ADDRINT memA
 						std::map<W::DWORD, std::string> exportsMap = gs->dllExports[i].exports;
 						W::DWORD nearestAddress = searchNearestValueExportMap(exportsMap, addr);
 						// Log the tainted instruction using a buffered logger
-						alertType = "system_mem-imm";
+						alertType = "system_mem-imm"; // TODO BEWARE OF CLOCKS
 						logAlert(tdata, "%x %x %s; 0x%08x [%d] %s 0x%08x(%d) %d %d %s 0x%08x\n", thread_ctx->clock.c1, thread_ctx->clock.c2,
 							alertType.c_str(), addr, (int)TTINFO(tainted), ins.c_str(), memAddress, readSize,
 							immValue, operandsTainted, (exportsMap)[nearestAddress].c_str(), hash);

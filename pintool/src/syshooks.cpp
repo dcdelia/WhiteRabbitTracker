@@ -377,6 +377,12 @@ namespace SYSHOOKS {
 				// TODO high false positives rate
 				logModule->logBypass(GET_INTERNAL_CLOCK(ctx), "NTQIP-ProcessBasicInformation");
 				((PPROCESS_BASIC_INFORMATION)ProcessInformation)->InheritedFromUniqueProcessId = (W::HANDLE)Helper::GetProcessIdByName("explorer.exe"); // TODO PID okay?
+				uint8_t color = GET_TAINT_COLOR(TT_NTQIP_PROCESSBASICINFO);
+				if (color) {
+					ADDRINT addr = (ADDRINT)(&((PPROCESS_BASIC_INFORMATION)ProcessInformation)->InheritedFromUniqueProcessId);
+					logHookId(ctx, "NTQIP-ProcessBasicInformation", addr, sizeof(W::HANDLE));
+					addTaintMemory(ctx, addr, sizeof(W::HANDLE), color, true, "NTQIP-ProcessDebugObjectHandle");
+				}
 			}
 			if (backupReturnLength != 0) {
 				*ReturnLength = backupReturnLength;
@@ -620,6 +626,7 @@ namespace SYSHOOKS {
 			logHookId(ctx, "NtQueryAttributesFile", (ADDRINT)basicInfo, sizeof(W::FILE_BASIC_INFO));
 			
 			//Tainting the whole FILE_BASIC_INFO data structure
+			// TODO so much redundancy, those are unions jeeeezzzzz
 			addTaintMemory(ctx, (ADDRINT) & (basicInfo->CreationTime.HighPart), sizeof(W::LONG), color, true, "NtQueryAttributesFile");
 			addTaintMemory(ctx, (ADDRINT) & (basicInfo->CreationTime.LowPart), sizeof(W::DWORD), color, true, "NtQueryAttributesFile");
 			addTaintMemory(ctx, (ADDRINT) & (basicInfo->CreationTime.u.HighPart), sizeof(W::LONG), color, true, "NtQueryAttributesFile");

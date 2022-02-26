@@ -4,6 +4,8 @@ from os.path import isdir, isfile, join
 import sys
 import logging
 
+logOffset = 0 # 0 for early versions, 2 for recent ones where we have timestamps
+
 def getDictConsumers(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
 	consumers = {}
@@ -35,6 +37,43 @@ def getDictConsumers(directoryTaintedLogs):
 						# BEWARE it is not keeping track of the size here
 	return consumers
 
+def parseMemLogHeader(splittedLine):
+	# - NtQueryAttributesFile 0x76fc46c4 0x001a781c 0x001a7844
+	name = splittedLine[1]
+	ctxt = int(splittedLine[2], 16)
+	hook_id = (name, ctxt) # name, ctxt hash
+	start = int(splittedLine[3], 16)
+	end = int(splittedLine[4], 16)
+	memoryRange = (start, end) # get: start, end
+	return hook_id, memoryRange
+
+def parseMemLogBuffer(splittedLine):
+	# 0x001a7820 0x001a7824 [1]
+	start = int(splittedLine[0], 16)
+	end = int(splittedLine[1], 16)
+	# color apparently unused - TODO DROP IT?
+	memoryRange = (start, end)
+	return memoryRange
+
+	
+def getInstructionTypeForGeneralLog(splittedLine):
+	return splittedLine[0].replace(";", "")
+
+def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
+	# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
+	# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
+	# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
+	# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
+	offsetForAddress = 5 if instructionType == "reg-mem" else 4
+	# extract fields
+	ipAddress = int(splittedLine[1], 16)
+	taintColor = int(splittedLine[2].replace("[", "").replace("]", ""))
+	opcode = splittedLine[3]
+	memAddress = int(splittedLine[offsetForAddress].split("(")[0], 16)
+	memSize = int(splittedLine[offsetForAddress].split("(")[1].replace(")", ""))
+	assertType = int(splittedLine[6])
+	ctxt = int(splittedLine[7], 16)
+	return ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt
 
 def populateTaintedChunks(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
@@ -50,16 +89,11 @@ def populateTaintedChunks(directoryTaintedLogs):
 			with open(directoryTaintedLogs + logFile) as f:
 				for line in f:
 					splittedLog = line.strip().split(" ")
-					# format example
-					# - NtQueryAttributesFile 0x76fc46c4 0x001a781c 0x001a7844
-					# 0x001a7820 0x001a7824 [1]
-					# 0x001a781c 0x001a7820 [1]
 					if splittedLog[0] == "-":
-						hook_id = (splittedLog[1], int(splittedLog[2], 16)) # name, ctxt hash
-						memoryRange = (int(splittedLog[3], 16), int(splittedLog[4], 16)) # start, end
+						hook_id, memoryRange = parseMemLogHeader(splittedLog)
 						prodLargeRange[hook_id] = memoryRange
 					else:
-						memoryRange = (int(splittedLog[0], 16), int(splittedLog[1], 16))
+						memoryRange = parseMemLogBuffer(splittedLog)
 						if hook_id not in prodMap.keys(): # hook_id from "- <ID> <ctxt> <start> <end>" line
 							prodMap[hook_id] = [memoryRange]
 						else:
@@ -70,6 +104,8 @@ def populateTaintedChunks(directoryTaintedLogs):
 		print(f"MemoryRange {scz} {prod}")
 		scz = scz + 1
 		
+		# insert wider ranges first, so we can detect subchunks easily
+		# also, should help with balance factor of the tree
 		sortedRanges = sorted(prodMap[prod], key=lambda k: (-(k[1]-k[0])))
 		for idx, range in enumerate(sortedRanges):
 			start, end = range
@@ -125,7 +161,6 @@ def update_hashmaps(insCounterDict, byteInsDict, ipAddr, memAddr, readSize):
 			if ipAddr not in byteInsDict[memAddr + i]:
 				byteInsDict[memAddr + i].append(ipAddr)
 
-
 def fTechnique(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
 	memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
@@ -135,28 +170,19 @@ def fTechnique(directoryTaintedLogs):
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
 			with open(directoryTaintedLogs + logFile) as f:
-				logContent = [x.strip() for x in f.readlines()]
-				for log in logContent:
-					splittedLog = log.split(" ")
-					instructionType = splittedLog[0].replace(";", "")
+				for line in f:
+					splittedLog = line.strip().split(" ")
+					instructionType = getInstructionTypeForGeneralLog(splittedLog)
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
-						# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
-						# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
-						# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
-						# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
-						ipAddress = int(splittedLog[1], 16)
-						assertType = int(splittedLog[6])
+						# TODO swap ifs for efficiency
+						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLog)
 						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
 						if instructionType == "mem" or instructionType == "mem-imm" or instructionType == "mem-reg":
 							if assertType != 2:
-								memAddress = int(splittedLog[4].split("(")[0], 16)
-								memSize = int(splittedLog[4].split("(")[1].replace(")", ""))
 								update_hashmaps(insCounterDict, byteInsDict, ipAddress, memAddress, memSize)
 						# for "reg-mem" the memory operand is the second
 						elif assertType != 1:
-							memAddress = int(splittedLog[5].split("(")[0], 16)
-							memSize = int(splittedLog[5].split("(")[1].replace(")", ""))
 							update_hashmaps(insCounterDict, byteInsDict, ipAddress, memAddress, memSize)
 	# Now calculate "preliminary" chunks
 	preliminaryChunks = {}  # dict<int, list<int>>
@@ -226,45 +252,26 @@ def findProdHeuristics(directoryTaintedLogs, definitiveChunksRoot):
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
 			with open(directoryTaintedLogs + logFile) as f:
-				logContent = [x.strip() for x in f.readlines()]
-				for log in logContent:
-					splittedLog = log.split(" ")
-					instructionType = splittedLog[0].replace(";", "")
+				for line in f:
+					splittedLog = line.strip().split(" ")
+					instructionType = getInstructionTypeForGeneralLog(splittedLog)
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
-						# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
-						# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
-						# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
-						# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
-						taintColor = int(splittedLog[2].replace("[", "").replace("]", ""))
-						assertType = int(splittedLog[6])
-						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
-						if instructionType == "mem" or instructionType == "mem-imm" or instructionType == "mem-reg":
-							memAddress = int(splittedLog[4].split("(")[0], 16)
-							if memAddress not in addrCol.keys():
-								addrCol.update({memAddress: taintColor})
-							else:
-								addrCol[memAddress] = taintColor
-						# for "reg-mem" the memory operand is the second
+						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLog)
+						# process memAddress
+						if memAddress not in addrCol.keys():
+							addrCol.update({memAddress: taintColor})
 						else:
-							memAddress = int(splittedLog[5].split("(")[0], 16)
-							if memAddress not in addrCol.keys():
-								addrCol.update({memAddress: taintColor})
-							else:
-								addrCol[memAddress] = taintColor
+							addrCol[memAddress] = taintColor
 						# if the memory is the destination operand -> it will be overwritten (expect for cmp and test)
-						instructionSymbol = splittedLog[3]
-						if instructionSymbol != "cmp" and instructionSymbol != "test" and instructionSymbol != "push" and \
+						if opcode != "cmp" and opcode != "test" and opcode != "push" and \
 								(instructionType == "mem-imm" or instructionType == "mem-reg"):
-							taintColor = int(splittedLog[2].replace("[", "").replace("]", ""))
-							memAddress = int(splittedLog[4].split("(")[0], 16)
-							xorHash = int(splittedLog[7], 16)
 							res: TaintedChunk = searchTaintedChunk(definitiveChunksRoot, memAddress)
 							if res is not None:
 								if (res.start, res.end) not in rangeProd.keys():
-									rangeProd.update({(res.start, res.end): (xorHash, taintColor)})
+									rangeProd.update({(res.start, res.end): (ctxt, taintColor)})
 								else:
-									rangeProd[(res.start, res.end)] = (xorHash, taintColor)
+									rangeProd[(res.start, res.end)] = (ctxt, taintColor)
 	return rangeProd, addrCol
 
 
