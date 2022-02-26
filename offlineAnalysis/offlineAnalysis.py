@@ -1,3 +1,4 @@
+from collections import defaultdict
 from intervalTree import *
 from os import listdir
 from os.path import isdir, isfile, join
@@ -16,6 +17,7 @@ def parseMemLogHeader(splittedLine):
 	memoryRange = (start, end) # get: start, end
 	return hook_id, memoryRange
 
+
 def parseMemLogBuffer(splittedLine):
 	# 0x001a7820 0x001a7824 [1]
 	start = int(splittedLine[0], 16)
@@ -28,6 +30,7 @@ def parseMemLogBuffer(splittedLine):
 def getInstructionTypeForGeneralLog(splittedLine):
 	idx = genLogOffset
 	return splittedLine[idx+0].replace(";", "")
+
 
 def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
 	# Original syntax
@@ -52,7 +55,7 @@ def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
 
 def getDictConsumers(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
-	consumers = {}
+	consumers = defaultdict(list)
 	for logFile in logFiles:
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
@@ -66,14 +69,18 @@ def getDictConsumers(directoryTaintedLogs):
 					if instructionType in memoryLogs:
 						# BEWARE it is not keeping track of the size here
 						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)	
-						# first time we encounter that ipAddress
-						if ipAddress not in consumers.keys():
-							consumers[ipAddress] = [memAddress]
-						# cons already exist -> update the set
-						else:
-							if memAddress not in consumers[ipAddress]:
-								consumers[ipAddress].append(memAddress)
+						consumers[ipAddress].append(memAddress)
 	return consumers
+
+
+def generateAwfulOrder(start, end, vec):
+	if start > end:
+		return
+	n, mod = divmod(end-start, 2)
+	n = n + start
+	vec.append(n)
+	generateAwfulOrder(start, n-1, vec)
+	generateAwfulOrder(n+1, end, vec)
 
 
 def populateTaintedChunks(directoryTaintedLogs):
@@ -81,7 +88,7 @@ def populateTaintedChunks(directoryTaintedLogs):
 	hook_id: (str, int) = None
 	root: TaintedChunk = None
 	prodLargeRange = {}  # dict(hook_id, memoryRange)
-	prodMap = {}  # dict(hook_id, list<memoryRange>)
+	prodMap = defaultdict(set)  # dict(hook_id, list<memoryRange>)
 
 	for logFile in logFiles:
 		# consider only memory areas logs
@@ -90,83 +97,73 @@ def populateTaintedChunks(directoryTaintedLogs):
 			with open(directoryTaintedLogs + logFile) as f:
 				for line in f:
 					splittedLog = line.strip().split(" ")
-					if splittedLog[0] == "-": # TODO
+					if splittedLog[0] == "-": # not really neat :)
 						hook_id, memoryRange = parseMemLogHeader(splittedLog)
 						prodLargeRange[hook_id] = memoryRange
 					else:
 						memoryRange = parseMemLogBuffer(splittedLog)
-						if hook_id not in prodMap.keys(): # hook_id from "- <ID> <ctxt> <start> <end>" line
-							prodMap[hook_id] = [memoryRange]
-						else:
-							if memoryRange not in prodMap[hook_id]: # avoid duplicates
-								prodMap[hook_id].append(memoryRange)
-	scz = 0
+						# General strategy: avoid duplicates
+						prodMap[hook_id].add(memoryRange)
+
+	# we need this cheap trick until we use a self-balancing interval tree						
+	sortedScz = []
 	for prod in prodMap:
-		print(f"MemoryRange {scz} {prod}")
-		scz = scz + 1
-		
-		# insert wider ranges first, so we can detect subchunks easily
-		# also, should help with balance factor of the tree
-		sortedRanges = sorted(prodMap[prod], key=lambda k: (-(k[1]-k[0])))
-		for idx, range in enumerate(sortedRanges):
-			start, end = range
-			if root is None:
-				root = TaintedChunk(start, end, prod[1], 1, prod[0])
+		for range in prodMap[prod]:
+			pair = (range, prod)
+			sortedScz.append(pair)
+	print(f"Number of recorded memory chunks: {len(sortedScz)}")
+	# first by decreasing range width, then by increasing start element. Still misses something though :/
+	sortedScz.sort(key=lambda k: (-(k[0][1]-k[0][0]), k[0][0]))
+	insertionOrder = []
+	generateAwfulOrder(0, len(sortedScz)-1, insertionOrder)
+	
+	for idx in insertionOrder:
+		range, prod = sortedScz[idx]
+		start, end = range[0], range[1]
+		if root is None:
+			root = TaintedChunk(start, end, prod[1], 1, prod[0])
+		else:
+			node = overlapSearch(root, start, end)
+			if node is None:
+				insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
 			else:
-				node = overlapSearch(root, start, end)
-				if node is None:
+				if (node.start <= start < node.end) and (node.start <= end <= node.end):
+					pass # OK CASE
+				elif start == node.end or node.start == end: # adjacent intervals
 					insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
 				else:
-					if (node.start <= start < node.end) and (node.start <= end <= node.end):
-						pass # OK CASE
-					elif start == node.end or node.start == end: # adjacent intervals
-						insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
-					else:
-						print(f"SKIPPING A BROKEN NODE! See {start:x}, {end:x} vs. {node.start:x}, {node.end:x}")
-				
-		'''
-		memoryRanges = prodMap[prod]
-		memoryRanges.sort()
-		for idx, memoryRange in enumerate(memoryRanges):
-			start, end = memoryRange
-
-			# create memory chunks
-			for idx2, nextRanges in enumerate(memoryRanges[idx + 1:]):
-				if memoryRanges[--idx2][1] == memoryRanges[++idx2][0]:
-					end = memoryRanges[idx2][1]
-
-			# insert chunk in interval tree
-			if root is None:
-				root = TaintedChunk(start, end, prod[1], 1, prod[0])
-			else:
-				if scz < 100:
-					print(f"Range is {start:x}-{end:x}")
-				insertTaintedChunk(root, start, end, prod[1], 1, prod[0])
-		'''
+					print(f"SKIPPING AN OVERLAPPING NODE! See {start:x}, {end:x} vs. {node.start:x}, {node.end:x}")
 
 	return root, prodLargeRange
 
 
-def update_hashmaps(insCounterDict, byteInsDict, ipAddr, memAddr, readSize):
-	# first time that we encounter the instruction
-	if ipAddr not in insCounterDict.keys():
-		insCounterDict[ipAddr] = 1
-	else:
-		insCounterDict[ipAddr] += 1
+def populateDefinitiveChunks(definitiveChunks):
+	root: TaintedChunk = None
 
-	for i in range(0, readSize):
-		# byte never encountered
-		if memAddr + i not in byteInsDict.keys():
-			byteInsDict[memAddr + i] = [ipAddr]
+	sortedScz = []
+	for l in definitiveChunks.values():
+		for range in l:
+			sortedScz.append(range)
+	sortedScz.sort(key=lambda k: (k[0]))
+	insertionOrder = []
+	generateAwfulOrder(0, len(sortedScz)-1, insertionOrder)
+
+	for idx in insertionOrder:
+		range = sortedScz[idx]
+		start, end = range[0], range[1]
+		if root is None:
+			root = TaintedChunk(start, end, 0x0, 1, "f_technique")
 		else:
-			if ipAddr not in byteInsDict[memAddr + i]:
-				byteInsDict[memAddr + i].append(ipAddr)
+			insertTaintedChunk(root, start, end, 0x0, 1, "f_technique")
+
+	return root
+
 
 def fTechnique(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
 	memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
-	insCounterDict = {}  # dict<ipAddr: int, size: int> (hit counter)
-	byteInsDict = {}  # dict<memAddr: int, list<int>> (set of instruction that accessed that byte)
+	insCounterDict = defaultdict(int)  # dict<ipAddr: int, size: int> (hit counter)
+	byteInsDict = defaultdict(set)  # dict<memAddr: int, list<int>> (set of instruction that accessed that byte)
 	for logFile in logFiles:
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
@@ -181,69 +178,71 @@ def fTechnique(directoryTaintedLogs):
 						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
 						if instructionType == "mem" or instructionType == "mem-imm" or instructionType == "mem-reg":
 							if assertType != 2:
-								update_hashmaps(insCounterDict, byteInsDict, ipAddress, memAddress, memSize)
+								insCounterDict[ipAddress] += 1
+								for i in range(0, memSize):
+									byteInsDict[memAddress+i].add(ipAddress)
 						# for "reg-mem" the memory operand is the second
 						elif assertType != 1:
-							update_hashmaps(insCounterDict, byteInsDict, ipAddress, memAddress, memSize)
+							insCounterDict[ipAddress] += 1
+							for i in range(0, memSize):
+								byteInsDict[memAddress+i].add(ipAddress)
+	print(f"Size of byteInsDict for fTechnique: {len(byteInsDict)}")
+	
 	# Now calculate "preliminary" chunks
-	preliminaryChunks = {}  # dict<int, list<int>>
-	hitCount = sys.maxsize  # infinite max size
-	ins = 0x00000000
+	preliminaryChunks = defaultdict(set)  # dict<int, list<int>> but we do not want duplicates
 	# for all bytes in the map
 	for bytesIns in byteInsDict.keys():
-		byteInsDict[bytesIns].sort() # TODO why is this needed? for breaking ties?
-		# for all instruction in the bytes-set
-		for currentIns in byteInsDict[bytesIns]:
+		# (ordered) list of instructions that accessed that byte
+		listOfIns = list(byteInsDict[bytesIns])
+		listOfIns.sort() # TODO sorting for breaking ties? unneeded?
+		
+		# look for lowest hitcount for all instructions in the bytes-set
+		# TODO this was not implemented the way I suggested...
+		hitCount = sys.maxsize
+		ins = None
+		for currentIns in listOfIns: # ins will be picked here
 			insCount = insCounterDict[currentIns]
 			if insCount < hitCount:
 				hitCount = insCount
 				ins = currentIns
-		# add instruction to preliminary map
-		if ins not in preliminaryChunks.keys():
-			preliminaryChunks[ins] = [bytesIns]
-		else:
-			if bytesIns not in preliminaryChunks[ins]:
-				preliminaryChunks[ins].append(bytesIns)
-		# reset hit count
-		hitCount = sys.maxsize
-
+		# add/update instruction in preliminary map
+		preliminaryChunks[ins].add(bytesIns)
+	
 	# from preliminary chunks to final chunks
-	chunkIndex = 1
-	definitiveChunks = {}  # dict<int, list<(chunkStart: int, chunkEnd: int)>
-	for chunk in preliminaryChunks.keys():
-		preliminaryChunks[chunk].sort() # sort bytes associated to instruction
-		for idx, currentIns in enumerate(preliminaryChunks[chunk]):
-			chunkStart = currentIns
-			# determine chunks size
-			for nextIns in preliminaryChunks[chunk][idx + 1:]:
-				if nextIns == chunkStart + chunkIndex:
-					++chunkIndex
-			chunkEnd = chunkStart + chunkIndex
-			if chunk not in definitiveChunks:
-				# create entry
-				definitiveChunks[chunk] = [(chunkStart, chunkEnd)]
-			else:
-				if (chunkStart, chunkEnd) not in definitiveChunks[chunk]:
-					definitiveChunks[chunk].append((chunkStart, chunkEnd))
-			chunkIndex = 1
+	definitiveChunks = defaultdict(set)  # dict<int, list<(chunkStart: int, chunkEnd: int)>
+	for ins in preliminaryChunks.keys():
+		l = list(preliminaryChunks[ins])
+		l.sort() # sort bytes associated to instruction
+		# merge adjacent addresses into a single chunk (previous code missed merges!)
+		max = len(l)
+		i = 0
+		while i < max:
+			j = i + 1
+			while j < max and l[j] == (l[j-1] + 1):
+				j = j + 1
+			chunk = (l[i], l[j-1]+1) # TODO IMPORTANT: check later in uses whether end is included or not...
+			i = j # to build next chunk (if any)
+			definitiveChunks[ins].add(chunk)
 
+	totalChunks = 0
+	for s in definitiveChunks.items():
+		for chunk in s:
+			totalChunks = totalChunks + len(s)
+
+	print(f"Definitive chunks from fTechnique: {totalChunks}")
 	return definitiveChunks
 
 
-def populateDefinitiveChunks(definitiveChunks):
-	root: TaintedChunk = None
+def addrColourToChunksRoot(definitiveChunksRoot, addrCols):
+	res: TaintedChunk = None
 
-	for chunk in definitiveChunks.keys():
-		definitiveChunks[chunk].sort()
-		for currentRange in definitiveChunks[chunk]:
-			if root is None:
-				root = TaintedChunk(currentRange[0], currentRange[1], 0x0, 1, "f_technique")
-			else:
-				insertTaintedChunk(root, currentRange[0], currentRange[1], 0x0, 1, "f_technique")
-
-	return root
+	for address, col in addrCols.items():
+		res = searchTaintedChunk(definitiveChunksRoot, address)
+		if res is not None:
+			res.colour = col
 
 
+# TODO check dictionary usage here
 def findProdHeuristics(directoryTaintedLogs, definitiveChunksRoot):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
 	memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
@@ -276,21 +275,11 @@ def findProdHeuristics(directoryTaintedLogs, definitiveChunksRoot):
 	return rangeProd, addrCol
 
 
-def addrColourToChunksRoot(definitiveChunksRoot, addrCols):
-	res: TaintedChunk = None
-
-	for address, col in addrCols.items():
-		res = searchTaintedChunk(definitiveChunksRoot, address)
-		if res is not None:
-			res.colour = col
-
 def main():
 	# sanity check
 	if len(sys.argv) != 3:
 		print("Usage: python offlineAnalysis.py PATH_TO_TAINTED_LOGS PATH_TO_CALL_STACK_LOG (e.g. offlineAnalysis.py C:\\Pin315\\taint\\ C:\\Pin315\\callstack.log)")
 		return -1
-
-	sys.setrecursionlimit(1500)
 
 	directoryTaintedLogs = sys.argv[1]
 	callStackLog = sys.argv[2]
