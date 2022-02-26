@@ -4,38 +4,7 @@ from os.path import isdir, isfile, join
 import sys
 import logging
 
-logOffset = 0 # 0 for early versions, 2 for recent ones where we have timestamps
-
-def getDictConsumers(directoryTaintedLogs):
-	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
-	consumers = {}
-	for logFile in logFiles:
-		# consider only general taint logs
-		if "mem" not in logFile and "ins" not in logFile:
-			with open(directoryTaintedLogs + logFile) as f:
-				for line in f:
-					splittedLog = line.strip().split(" ")
-					# consider only taint logs that involves memory areas
-					memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
-					# format example:
-					# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
-					# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
-					# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
-					# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
-					instructionType = splittedLog[0].replace(";", "")
-					if instructionType in memoryLogs:
-						cons = int(splittedLog[1], 16) # address of instruction
-						memAddressIndex = 5 if instructionType == "reg-mem" else 4
-						memAddress = splittedLog[memAddressIndex].split("(")[0] # width
-						# first time we encounter that cons
-						if cons not in consumers.keys():
-							consumers[cons] = [int(memAddress, 16)]
-						# cons already exist -> update the set
-						else:
-							if int(memAddress, 16) not in consumers[cons]:
-								consumers[cons].append(int(memAddress, 16))
-						# BEWARE it is not keeping track of the size here
-	return consumers
+genLogOffset = 2 # 0 for early versions, 2 for recent ones where we have timestamps
 
 def parseMemLogHeader(splittedLine):
 	# - NtQueryAttributesFile 0x76fc46c4 0x001a781c 0x001a7844
@@ -57,23 +26,55 @@ def parseMemLogBuffer(splittedLine):
 
 	
 def getInstructionTypeForGeneralLog(splittedLine):
-	return splittedLine[0].replace(";", "")
+	idx = genLogOffset
+	return splittedLine[idx+0].replace(";", "")
 
 def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
+	# Original syntax
 	# mem; 0x001454cb [1] push 0x004a70e0(4) NA 1 0x74a0519
 	# mem-imm; 0x0014460d [1] cmp 0x004a75bc(4) 0 1 0x74b4e0e0
 	# mem-reg; 0x0135c62f [2] mov 0x001af9c4(4) eax 2 0x745df585
 	# reg-mem; 0x0013c701 [1] mov eax 0x004afa34(4) 2 0x74b3f585
-	offsetForAddress = 5 if instructionType == "reg-mem" else 4
+	# When updating WhiteRabbitTracker we added heading timestamps here:
+	# 651c 7095d2 reg-reg; 0x00769afc [2] bt dx di 1 0x7524e3ea
+	idx = genLogOffset
+	offsetForAddress = (idx+5) if instructionType == "reg-mem" else (idx+4)
 	# extract fields
-	ipAddress = int(splittedLine[1], 16)
-	taintColor = int(splittedLine[2].replace("[", "").replace("]", ""))
-	opcode = splittedLine[3]
+	ipAddress = int(splittedLine[idx+1], 16)
+	taintColor = int(splittedLine[idx+2].replace("[", "").replace("]", ""))
+	opcode = splittedLine[idx+3]
 	memAddress = int(splittedLine[offsetForAddress].split("(")[0], 16)
 	memSize = int(splittedLine[offsetForAddress].split("(")[1].replace(")", ""))
-	assertType = int(splittedLine[6])
-	ctxt = int(splittedLine[7], 16)
+	assertType = int(splittedLine[idx+6])
+	ctxt = int(splittedLine[idx+7], 16)
 	return ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt
+
+
+def getDictConsumers(directoryTaintedLogs):
+	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
+	consumers = {}
+	for logFile in logFiles:
+		# consider only general taint logs
+		if "mem" not in logFile and "ins" not in logFile:
+			with open(directoryTaintedLogs + logFile) as f:
+				for line in f:
+					splittedLine = line.strip().split(" ")
+					# consider only taint logs that involves memory areas
+					memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
+					instructionType = getInstructionTypeForGeneralLog(splittedLine)
+					# consider only the instruction that involves memory areas
+					if instructionType in memoryLogs:
+						# BEWARE it is not keeping track of the size here
+						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)	
+						# first time we encounter that ipAddress
+						if ipAddress not in consumers.keys():
+							consumers[ipAddress] = [memAddress]
+						# cons already exist -> update the set
+						else:
+							if memAddress not in consumers[ipAddress]:
+								consumers[ipAddress].append(memAddress)
+	return consumers
+
 
 def populateTaintedChunks(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
@@ -89,7 +90,7 @@ def populateTaintedChunks(directoryTaintedLogs):
 			with open(directoryTaintedLogs + logFile) as f:
 				for line in f:
 					splittedLog = line.strip().split(" ")
-					if splittedLog[0] == "-":
+					if splittedLog[0] == "-": # TODO
 						hook_id, memoryRange = parseMemLogHeader(splittedLog)
 						prodLargeRange[hook_id] = memoryRange
 					else:
@@ -171,12 +172,12 @@ def fTechnique(directoryTaintedLogs):
 		if "mem" not in logFile and "ins" not in logFile:
 			with open(directoryTaintedLogs + logFile) as f:
 				for line in f:
-					splittedLog = line.strip().split(" ")
-					instructionType = getInstructionTypeForGeneralLog(splittedLog)
+					splittedLine = line.strip().split(" ")
+					instructionType = getInstructionTypeForGeneralLog(splittedLine)
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
 						# TODO swap ifs for efficiency
-						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLog)
+						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
 						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
 						if instructionType == "mem" or instructionType == "mem-imm" or instructionType == "mem-reg":
 							if assertType != 2:
@@ -253,11 +254,11 @@ def findProdHeuristics(directoryTaintedLogs, definitiveChunksRoot):
 		if "mem" not in logFile and "ins" not in logFile:
 			with open(directoryTaintedLogs + logFile) as f:
 				for line in f:
-					splittedLog = line.strip().split(" ")
-					instructionType = getInstructionTypeForGeneralLog(splittedLog)
+					splittedLine = line.strip().split(" ")
+					instructionType = getInstructionTypeForGeneralLog(splittedLine)
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
-						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLog)
+						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
 						# process memAddress
 						if memAddress not in addrCol.keys():
 							addrCol.update({memAddress: taintColor})
