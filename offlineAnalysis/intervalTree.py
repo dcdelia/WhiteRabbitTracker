@@ -1,5 +1,5 @@
 class HookIdProduct:
-    def __init__(self, hookChunks: list, hookLargeChunks: (int, int)):
+    def __init__(self, hookChunks: set, hookLargeChunks: (int, int)):
         self.hookChunks = hookChunks
         self.hookLargeChunks = hookLargeChunks
 

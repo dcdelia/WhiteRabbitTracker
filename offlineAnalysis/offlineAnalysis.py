@@ -1,11 +1,26 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
+from dataclasses import dataclass # Python 3.7+
 from intervalTree import *
 from os import listdir
-from os.path import isdir, isfile, join
+from os.path import isdir, isfile, join, getsize
 import sys
 import logging
 
-genLogOffset = 2 # 0 for early versions, 2 for recent ones where we have timestamps
+genLogOffset = None 
+
+def setGenLogOffset(directoryTaintedLogs):
+	global genLogOffset
+	# 0 for early versions, 2 for recent ones where we have timestamps
+	logFiles = [f for f in listdir(directoryTaintedLogs) \
+				if isfile(join(directoryTaintedLogs, f)) and "mem" not in f and "ins" not in f]
+	for logFile in logFiles:
+		filePath = join(directoryTaintedLogs, logFile)
+		if getsize(filePath):
+			with open(filePath) as f:
+				for line in f:
+					genLogOffset = 0 if (line[0].isalpha()) else 2
+					print(f"Offset to use for indexing logs: {genLogOffset}")
+					return
 
 def parseMemLogHeader(splittedLine):
 	# - NtQueryAttributesFile 0x76fc46c4 0x001a781c 0x001a7844
@@ -31,6 +46,17 @@ def getInstructionTypeForGeneralLog(splittedLine):
 	idx = genLogOffset
 	return splittedLine[idx+0].replace(";", "")
 
+@dataclass
+class GenLogMemEntry:
+	ipAddress: int = 0
+	taintColor: int = 0
+	opcode: str = None
+	memAddress: int = 0
+	memSize: int = 0
+	assertType: int = 0
+	ctxt: int = 0
+	callClock: int = 0
+	jmpClock: int = 0
 
 def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
 	# Original syntax
@@ -43,6 +69,8 @@ def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
 	idx = genLogOffset
 	offsetForAddress = (idx+5) if instructionType == "reg-mem" else (idx+4)
 	# extract fields
+	callClock = int(splittedLine[0], 16) if idx == 2 else 0
+	jmpClock = int(splittedLine[1], 16) if idx == 2 else 0
 	ipAddress = int(splittedLine[idx+1], 16)
 	taintColor = int(splittedLine[idx+2].replace("[", "").replace("]", ""))
 	opcode = splittedLine[idx+3]
@@ -50,16 +78,15 @@ def parseGeneralLogForMemoryEntry(instructionType, splittedLine):
 	memSize = int(splittedLine[offsetForAddress].split("(")[1].replace(")", ""))
 	assertType = int(splittedLine[idx+6])
 	ctxt = int(splittedLine[idx+7], 16)
-	return ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt
-
+	return GenLogMemEntry(ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt, callClock, jmpClock)
 
 def getDictConsumers(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
-	consumers = defaultdict(list)
+	consumers = defaultdict(set)
 	for logFile in logFiles:
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
-			with open(directoryTaintedLogs + logFile) as f:
+			with open(join(directoryTaintedLogs, logFile)) as f:
 				for line in f:
 					splittedLine = line.strip().split(" ")
 					# consider only taint logs that involves memory areas
@@ -68,10 +95,43 @@ def getDictConsumers(directoryTaintedLogs):
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
 						# BEWARE it is not keeping track of the size here
-						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)	
-						consumers[ipAddress].append(memAddress)
+						genLogMemEntry = parseGeneralLogForMemoryEntry(instructionType, splittedLine)	
+						consumers[genLogMemEntry.ipAddress].add(genLogMemEntry.memAddress)
 	return consumers
 
+# for now, we do not distinguish consumers by call stack hash
+def getDictConsumersByTimestamp(directoryTaintedLogs):
+	# note: will break on old logs due to missing timestamp
+	if genLogOffset == 0:
+		print("Please do not use getDictConsumersByTimestamp on old logs")
+		exit(1)
+	tempConsumers = defaultdict(list)
+	equivConsumers = defaultdict(set)
+	logFiles = [f for f in listdir(directoryTaintedLogs) \
+				if isfile(join(directoryTaintedLogs, f)) and "mem" not in f and "ins" not in f]
+	for logFile in logFiles:
+		with open(join(directoryTaintedLogs, logFile)) as f:
+			lastTimestamp = -1 # unless we overflow an uint32
+			prevConsumer = -1
+			lastAddr = -1
+			for line in f:
+				splittedLine = line.strip().split(" ")
+				# consider only taint logs that involves memory areas
+				memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
+				instructionType = getInstructionTypeForGeneralLog(splittedLine)
+				if instructionType in memoryLogs:
+					# BEWARE it is not keeping track of the size here
+					genLogMemEntry = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
+					tempConsumers[genLogMemEntry.ipAddress].append(genLogMemEntry.memAddress)
+					# == lastAddr a bit rough as it could be still the same dword, but still...
+					if genLogMemEntry.jmpClock == lastTimestamp:
+						equivConsumers[prevConsumer].add(genLogMemEntry.ipAddress)
+					else:
+						lastTimestamp = genLogMemEntry.jmpClock
+						prevConsumer = genLogMemEntry.ipAddress
+						lastAddr = genLogMemEntry.memAddress
+	print(len(equivConsumers))
+	print(len(equivConsumers.items()))
 
 def generateAwfulOrder(start, end, vec):
 	if start > end:
@@ -94,7 +154,7 @@ def populateTaintedChunks(directoryTaintedLogs):
 		# consider only memory areas logs
 		if "mem" in logFile:
 			print(f"Logfile: {logFile}")
-			with open(directoryTaintedLogs + logFile) as f:
+			with open(join(directoryTaintedLogs, logFile)) as f:
 				for line in f:
 					splittedLog = line.strip().split(" ")
 					if splittedLog[0] == "-": # not really neat :)
@@ -158,6 +218,71 @@ def populateDefinitiveChunks(definitiveChunks):
 
 	return root
 
+def fTechniqueWithProperCounts(directoryTaintedLogs):
+	logFiles = [f for f in listdir(directoryTaintedLogs) \
+				if isfile(join(directoryTaintedLogs, f)) and "mem" not in f and "ins" not in f]
+	memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
+	addrDictWithCnts = defaultdict(lambda: defaultdict(int)) # dict<memAddr: dict<ins, count>>
+	for logFile in logFiles:
+		# consider only general taint logs
+		with open(join(directoryTaintedLogs, logFile)) as f:
+			for line in f:
+				splittedLine = line.strip().split(" ")
+				instructionType = getInstructionTypeForGeneralLog(splittedLine)
+				# consider only the instruction that involves memory areas
+				if instructionType in memoryLogs:
+					# TODO swap ifs for efficiency
+					genLogMemEntry = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
+					#  the memory operand is the first
+					if instructionType == "reg-mem" and genLogMemEntry.assertType != 1:
+						for i in range(0, genLogMemEntry.memSize):
+							addrDictWithCnts[genLogMemEntry.memAddress+i][genLogMemEntry.ipAddress] += 1
+					elif genLogMemEntry.assertType != 2: # for "mem", "mem-imm" and "mem-reg"
+						for i in range(0, genLogMemEntry.memSize):
+							addrDictWithCnts[genLogMemEntry.memAddress+i][genLogMemEntry.ipAddress] += 1
+	print(f"Size of addrDictWithCnts for fTechniqueLocal: {len(addrDictWithCnts)}")
+
+	# Now calculate "preliminary" chunks
+	preliminaryChunks = defaultdict(set)  # dict<int, list<int>> but we do not want duplicates
+	# for all bytes in the map
+	for memAddr in addrDictWithCnts.keys():
+		# (ordered) list of instructions that accessed that byte
+		listOfIns = list(addrDictWithCnts[memAddr].keys())
+		listOfIns.sort() # TODO sorting for breaking ties? unneeded?
+		
+		# look for instruction with lowest hitcount
+		hitCount = sys.maxsize
+		ins = None
+		for currentIns in listOfIns: # ins will be picked here
+			insCount = addrDictWithCnts[memAddr][currentIns]
+			if insCount < hitCount:
+				hitCount = insCount
+				ins = currentIns
+		# add/update instruction in preliminary map
+		preliminaryChunks[ins].add(memAddr)
+	
+		# from preliminary chunks to final chunks
+	definitiveChunks = defaultdict(set)  # dict<int, list<(chunkStart: int, chunkEnd: int)>
+	for ins in preliminaryChunks.keys():
+		l = list(preliminaryChunks[ins])
+		l.sort() # sort bytes associated to instruction
+		# merge adjacent addresses into a single chunk (previous code missed merges!)
+		max = len(l)
+		i = 0
+		while i < max:
+			j = i + 1
+			while j < max and l[j] == (l[j-1] + 1):
+				j = j + 1
+			chunk = (l[i], l[j-1]+1) # TODO IMPORTANT: check later in uses whether end is included or not...
+			i = j # to build next chunk (if any)
+			definitiveChunks[ins].add(chunk)
+
+	totalChunks = 0
+	for s in definitiveChunks.items():
+		totalChunks = totalChunks + len(s)
+
+	print(f"Definitive chunks from fTechniqueLocal: {totalChunks}")
+	return definitiveChunks
 
 def fTechnique(directoryTaintedLogs):
 	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
@@ -167,25 +292,25 @@ def fTechnique(directoryTaintedLogs):
 	for logFile in logFiles:
 		# consider only general taint logs
 		if "mem" not in logFile and "ins" not in logFile:
-			with open(directoryTaintedLogs + logFile) as f:
+			with open(join(directoryTaintedLogs, logFile)) as f:
 				for line in f:
 					splittedLine = line.strip().split(" ")
 					instructionType = getInstructionTypeForGeneralLog(splittedLine)
 					# consider only the instruction that involves memory areas
 					if instructionType in memoryLogs:
 						# TODO swap ifs for efficiency
-						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
+						genLogMemEntry = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
 						# for "mem", "mem-imm" and "mem-reg" the memory operand is the first
 						if instructionType == "mem" or instructionType == "mem-imm" or instructionType == "mem-reg":
-							if assertType != 2:
-								insCounterDict[ipAddress] += 1
-								for i in range(0, memSize):
-									byteInsDict[memAddress+i].add(ipAddress)
+							if genLogMemEntry.assertType != 2:
+								insCounterDict[genLogMemEntry.ipAddress] += 1
+								for i in range(0, genLogMemEntry.memSize):
+									byteInsDict[genLogMemEntry.memAddress+i].add(genLogMemEntry.ipAddress)
 						# for "reg-mem" the memory operand is the second
-						elif assertType != 1:
-							insCounterDict[ipAddress] += 1
-							for i in range(0, memSize):
-								byteInsDict[memAddress+i].add(ipAddress)
+						elif genLogMemEntry.assertType != 1:
+							insCounterDict[genLogMemEntry.ipAddress] += 1
+							for i in range(0, genLogMemEntry.memSize):
+								byteInsDict[genLogMemEntry.memAddress+i].add(genLogMemEntry.ipAddress)
 	print(f"Size of byteInsDict for fTechnique: {len(byteInsDict)}")
 	
 	# Now calculate "preliminary" chunks
@@ -226,8 +351,7 @@ def fTechnique(directoryTaintedLogs):
 
 	totalChunks = 0
 	for s in definitiveChunks.items():
-		for chunk in s:
-			totalChunks = totalChunks + len(s)
+		totalChunks = totalChunks + len(s)
 
 	print(f"Definitive chunks from fTechnique: {totalChunks}")
 	return definitiveChunks
@@ -244,53 +368,51 @@ def addrColourToChunksRoot(definitiveChunksRoot, addrCols):
 
 # TODO check dictionary usage here
 def findProdHeuristics(directoryTaintedLogs, definitiveChunksRoot):
-	logFiles = [f for f in listdir(directoryTaintedLogs) if isfile(join(directoryTaintedLogs, f))]
+	logFiles = [f for f in listdir(directoryTaintedLogs) \
+				if isfile(join(directoryTaintedLogs, f)) and "mem" not in f and "ins" not in f]
 	memoryLogs = ["mem", "mem-imm", "mem-reg", "reg-mem"]
 	rangeProd = {}  # dict<pair<startMem: int, endMem: int>, pair<insAddress: int, color: int>>
 	addrCol = {}  # dict<address: int, color: int>
 	for logFile in logFiles:
 		# consider only general taint logs
-		if "mem" not in logFile and "ins" not in logFile:
-			with open(directoryTaintedLogs + logFile) as f:
-				for line in f:
-					splittedLine = line.strip().split(" ")
-					instructionType = getInstructionTypeForGeneralLog(splittedLine)
-					# consider only the instruction that involves memory areas
-					if instructionType in memoryLogs:
-						ipAddress, taintColor, opcode, memAddress, memSize, assertType, ctxt = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
-						# process memAddress
-						if memAddress not in addrCol.keys():
-							addrCol.update({memAddress: taintColor})
-						else:
-							addrCol[memAddress] = taintColor
-						# if the memory is the destination operand -> it will be overwritten (expect for cmp and test)
-						if opcode != "cmp" and opcode != "test" and opcode != "push" and \
-								(instructionType == "mem-imm" or instructionType == "mem-reg"):
-							res: TaintedChunk = searchTaintedChunk(definitiveChunksRoot, memAddress)
-							if res is not None:
-								if (res.start, res.end) not in rangeProd.keys():
-									rangeProd.update({(res.start, res.end): (ctxt, taintColor)})
-								else:
-									rangeProd[(res.start, res.end)] = (ctxt, taintColor)
+		with open(join(directoryTaintedLogs, logFile)) as f:
+			for line in f:
+				splittedLine = line.strip().split(" ")
+				instructionType = getInstructionTypeForGeneralLog(splittedLine)
+				# consider only the instruction that involves memory areas
+				if instructionType in memoryLogs:
+					genLogMemEntry = parseGeneralLogForMemoryEntry(instructionType, splittedLine)
+					# process memAddress
+					addrCol[genLogMemEntry.memAddress] = genLogMemEntry.taintColor # BEWARE of overwrites
+					# if the memory is the destination operand -> it will be overwritten (expect for cmp and test)
+					if genLogMemEntry.opcode != "cmp" and genLogMemEntry.opcode != "test" and genLogMemEntry.opcode != "push" and \
+							(instructionType == "mem-imm" or instructionType == "mem-reg"):
+						res: TaintedChunk = searchTaintedChunk(definitiveChunksRoot, genLogMemEntry.memAddress)
+						if res is not None:
+							# TODO we had an update operation here, seemed unnecessary
+							rangeProd[(res.start, res.end)] = (genLogMemEntry.ctxt, genLogMemEntry.taintColor)
 	return rangeProd, addrCol
 
 
 def main():
 	# sanity check
-	if len(sys.argv) != 3:
-		print("Usage: python offlineAnalysis.py PATH_TO_TAINTED_LOGS PATH_TO_CALL_STACK_LOG (e.g. offlineAnalysis.py C:\\Pin315\\taint\\ C:\\Pin315\\callstack.log)")
+	if len(sys.argv) != 2:
+		print("Usage: python offlineAnalysis.py PATH_TO_WRT_LOGS (e.g. offlineAnalysis.py C:\\Pin319\\experiment)")
 		return -1
 
-	directoryTaintedLogs = sys.argv[1]
-	callStackLog = sys.argv[2]
+	directoryLogs = sys.argv[1]
+	directoryTaintedLogs = join(directoryLogs, "taint")
+	callStackLog = join(directoryLogs, "callstack.log")
 
 	# sanity checks
 	if isdir(directoryTaintedLogs) is False:
-		print("The given path to the tainted logs is not a directory!")
+		print("Could not find subdirectory for tainted logs!")
 	if isfile(callStackLog) is False:
-		print("The given path to the call stack log is not a file!")
+		print("Could not find call stack log!")
 
-	# create logging file
+	setGenLogOffset(directoryTaintedLogs)
+
+	# create logging file # TODO why do we even need logging handlers?
 	for handler in logging.root.handlers[:]:
 		logging.root.removeHandler(handler)
 	try:
@@ -309,13 +431,21 @@ def main():
 	'''
 	consumers = getDictConsumers(directoryTaintedLogs)
 	print(f"Number of consumers found: {len(consumers)}")
+	cnt = 0
+	for l in consumers.values():
+		cnt += len(l)
+	print(f"Number of consumed addresses to parse: {cnt}")
+
+	#getDictConsumersByTimestamp(directoryTaintedLogs)
 
 	'''
 	Create an interval tree that contains the tainted memory areas during the program execution
 	'''
 	taintProducerRoot, prodLargeRange = populateTaintedChunks(directoryTaintedLogs)
 
-	definitiveChunks = fTechnique(directoryTaintedLogs)
+	#definitiveChunks = fTechnique(directoryTaintedLogs)
+	#print(len(definitiveChunks.items()))
+	definitiveChunks = fTechniqueWithProperCounts(directoryTaintedLogs)
 	'''
 	# DEBUG CHUNKS
 	for chunk in definitiveChunks.keys():
@@ -342,111 +472,118 @@ def main():
 	'''
 	It's time to build the .dot file (graph)
 	'''
-	consumerChunks = {} # dict<address,list<pair<start,end>>>
-	chunks = [] # list<pair<start,end>>
+	consumerChunks = defaultdict(set) # dict<address,list<pair<start,end>>>
+	chunks = set() # list<pair<start,end>>
 	rangeHookId = {} # dict<pair<start,end>, hookID>, hookID = pair<hookName,xor>
-	prodHooks = [] # list<hookID>, hookID = pair<hookName,xor>
+	##prodHooks = set() # list<hookID>, hookID = pair<hookName,xor>
 	producerChunks = {} # dict<hookID, hookID_product>, hookID = pair<hookName,xor>, hookID_product = pair<list<range>, range>
-	producerIds = [] # list<pair<insAddress: int, colour: int>>
-	producerIdsChunks = {} # dict<pair<insAddress: int, colour: int>, list<pair<start, end>>>
-	colourChunks = {} # dict<int, list<pair<start, end>>>
+	producerIds = set() # list<pair<insAddress: int, colour: int>>
+	producerIdsChunks = defaultdict(set) # dict<pair<insAddress: int, colour: int>, list<pair<start, end>>>
+	colourChunks = defaultdict(set) # dict<int, list<pair<start, end>>>
 	# for each consumer
 	for consumer in consumers:
-		consumers[consumer].sort()
-		# for each consumed address by the consumer
-		for consumedAddress in consumers[consumer]:
+		tempList = sorted(list(consumers[consumer]))
+		# for each consumed address at the consumer
+		for consumedAddress in tempList:
 			# if address is in tainted chunks (log files)
 			res = searchTaintedChunk(taintProducerRoot, consumedAddress)
 			if res is not None:
 				currentRange = (res.start, res.end)
 				# insert chunk
-				if currentRange not in chunks:
-					chunks.append(currentRange)
+				chunks.add(currentRange) # TODO we may use some order later?
 				# insert consumer
-				if consumer not in consumerChunks.keys():
-					consumerChunks[consumer] = [currentRange]
-				else:
-					if currentRange not in consumerChunks[consumer]:
-						consumerChunks[consumer].append(currentRange)
+				consumerChunks[consumer].add(currentRange)
 				# insert producer
 				hookID = (res.name, res.xorValue)
 				rangeHookId[currentRange] = hookID
 				# add hookID to producer set (unique ID in dot file)
-				if hookID not in prodHooks:
-					prodHooks.append(hookID)
+				##prodHooks.add(hookID)
 				if hookID not in producerChunks.keys():
-					hookID_product = HookIdProduct([currentRange], None)
-					producerChunks[hookID] = hookID_product
+					producerChunks[hookID] = HookIdProduct(set({currentRange}), None)
 				else:
-					if currentRange not in producerChunks[hookID].hookChunks:
-						producerChunks[hookID].hookChunks.append(hookID_product)
+					producerChunks[hookID].hookChunks.add(currentRange) # amended logic error here...
 			# address is in chunks from fTechnique
 			else:
 				res = searchTaintedChunk(definitiveChunksRoot, consumedAddress)
 				if res is not None:
 					currentRange = (res.start, res.end)
 					# insert chunk
-					if currentRange not in chunks:
-						chunks.append(currentRange)
+					chunks.add(currentRange)
 					# insert consumer
-					if consumer not in consumerChunks.keys():
-						consumerChunks[consumer] = [currentRange]
-					else:
-						if currentRange not in consumerChunks[consumer]:
-							consumerChunks[consumer].append(currentRange)
+					consumerChunks[consumer].add(currentRange)
 					# if the producer is in the heuristic output
 					if currentRange in rangeProd.keys():
-						if rangeProd[currentRange] not in producerIds:
-							producerIds.append(rangeProd[currentRange])
-						if currentRange not in chunks:
-							chunks.append(currentRange) # TODO what changed? see a few lines above
-						if rangeProd[currentRange] not in producerIdsChunks.keys():
-							producerIdsChunks[rangeProd[currentRange]] = [currentRange]
-						else:
-							if currentRange not in producerIdsChunks[rangeProd[currentRange]]:
-								producerIdsChunks[rangeProd[currentRange]].append(currentRange)
+						producerIds.add(rangeProd[currentRange]) # range => set of (ctxt, color) pairs
+						#if currentRange not in chunks: # TODO this is likely a leftover from Andrea
+						#	chunks.add(currentRange) # was: append
+						producerIdsChunks[rangeProd[currentRange]].add(currentRange)
 					# if the producer is a special node
 					elif res.colour != 0:
-						if currentRange not in chunks:
-							chunks.append(currentRange)
-							if res.colour not in colourChunks.keys():
-								colourChunks[res.colour] = [currentRange]
-							else:
-								if currentRange not in colourChunks[res.colour]:
-									colourChunks[res.colour].append(currentRange)
+						colourChunks[res.colour].add(currentRange) # logic bug fixed (was not added if chunk existed)
 
 	# define large chunks with more than 10 intervals
 	THRESHOLD = 10
-	largeChunks = [] # list<pair<start,end>>
+	largeChunks = set() # list<pair<start,end>>
 	for hookId, hookId_products in producerChunks.items():
 		if len(hookId_products.hookChunks) >= THRESHOLD:
 			if hookId in prodLargeRange.keys():
 				hookId_products.hookLargeChunks = prodLargeRange[hookId]
-				if prodLargeRange[hookId] not in largeChunks:
-					largeChunks.append(prodLargeRange[hookId])
+				largeChunks.add(prodLargeRange[hookId])
+
+	# quick analysis of how many instructions access the same chunks
+	dirtycount_duplicates = set()
+	dirtycount_keys = sorted(list(consumerChunks.keys()))
+	dirtycount_len = len(dirtycount_keys)
+	for i in range(0, dirtycount_len):
+		if i in dirtycount_duplicates:
+			continue # do not count duplicates again
+		j = i + 1
+		while j < dirtycount_len:
+			if Counter(consumerChunks[dirtycount_keys[i]]) == Counter(consumerChunks[dirtycount_keys[j]]):
+				dirtycount_duplicates.add(j)
+			j = j + 1
+	num_duplicates = len(dirtycount_duplicates)
+	print(f"Number of instructions with unique ranges: {dirtycount_len-num_duplicates} (duplicates: {num_duplicates}/{dirtycount_len})")
+	
+	print("Attempting duplicates removal (TODO: unify labels)")
+	for idx in dirtycount_duplicates:
+		del consumerChunks[dirtycount_keys[idx]]
+
+	## Internal graph representation
+	## We will start with something real simple
+
 
 	# WRITE DOT FILE
+	output = "digraph {\n\tnode[shape=box]\n"
+	logging.info(output)
 	output = ""
-	output += "digraph {\n\tnode[shape=box]\n"
+
+	consumerChunksCnt = 0
 	for k, v in consumerChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + hex(k) + "\"];\n"
+		consumerChunksCnt = consumerChunksCnt + len(v)
+	print(f"Consumer chunks (with duplicates): {consumerChunksCnt}")
 	if output:
 		logging.info(output)
 	output = ""
+
 	for k, v in producerChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + k[0] + "\n " + hex(k[1]) + "\"];\n"
+	print(f"Producer chunks: {len(producerChunks.items())}")
 	if output:
 		logging.info(output)
 	output = ""
 
 	for k, v in producerIdsChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + hex(k[0]) + "\n " + hex(k[1]) + "\"];\n"
+	print(f"ProducerIDs chunks: {len(producerIdsChunks.items())}")
 	if output:
 		logging.info(output)
 	output = ""
 
 	for k, v in colourChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + hex(k) + "\"];\n"
+	print(f"Colour chunks: {len(colourChunks.items())}")
 	if output:
 		logging.info(output)
 	output = ""
@@ -464,6 +601,7 @@ def main():
 				output += "\"" + hex(id(chunk[0])) + "\" [label=\"[" + hex(chunk[0]) + "-\\n" + hex(chunk[1]) + "]\"];\n"
 		else:
 			output += "\"" + hex(id(chunk[0])) + "\" [label=\"[" + hex(chunk[0]) + "-\\n" + hex(chunk[1]) + "]\"];\n"
+	print(f"Unique chunks from consumer analysis: {len(chunks)}")
 	if output:
 		logging.info(output)
 	output = ""
