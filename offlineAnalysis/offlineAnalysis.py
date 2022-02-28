@@ -476,7 +476,7 @@ def main():
 	chunks = set() # list<pair<start,end>>
 	rangeHookId = {} # dict<pair<start,end>, hookID>, hookID = pair<hookName,xor>
 	##prodHooks = set() # list<hookID>, hookID = pair<hookName,xor>
-	producerChunks = {} # dict<hookID, hookID_product>, hookID = pair<hookName,xor>, hookID_product = pair<list<range>, range>
+	producerChunks = {} # dict<hookID, hookID_product>, hookID = pair<hookName,xor>, hookID_product = pair<set<range>, range>
 	producerIds = set() # list<pair<insAddress: int, colour: int>>
 	producerIdsChunks = defaultdict(set) # dict<pair<insAddress: int, colour: int>, list<pair<start, end>>>
 	colourChunks = defaultdict(set) # dict<int, list<pair<start, end>>>
@@ -527,14 +527,14 @@ def main():
 	for hookId, hookId_products in producerChunks.items():
 		if len(hookId_products.hookChunks) >= THRESHOLD:
 			if hookId in prodLargeRange.keys():
-				hookId_products.hookLargeChunks = prodLargeRange[hookId]
+				hookId_products.hookLargeChunks = prodLargeRange[hookId] # TODO this seems unused by Andrea
 				largeChunks.add(prodLargeRange[hookId])
 
 	# quick analysis of how many instructions access the same chunks
 	dirtycount_duplicates = set()
 	dirtycount_keys = sorted(list(consumerChunks.keys()))
 	dirtycount_len = len(dirtycount_keys)
-	for i in range(0, dirtycount_len):
+	for i in range(0, dirtycount_len-1):
 		if i in dirtycount_duplicates:
 			continue # do not count duplicates again
 		j = i + 1
@@ -551,39 +551,50 @@ def main():
 
 	## Internal graph representation
 	## We will start with something real simple
-
+	my_consumers = set()
+	my_chunks = set()
+	my_producers = set()
+	my_cons_edges = set()
+	my_prod_edges = set()
 
 	# WRITE DOT FILE
 	output = "digraph {\n\tnode[shape=box]\n"
 	logging.info(output)
 	output = ""
 
-	consumerChunksCnt = 0
+	tmpChunksCnt = 0
 	for k, v in consumerChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + hex(k) + "\"];\n"
-		consumerChunksCnt = consumerChunksCnt + len(v)
-	print(f"Consumer chunks (with duplicates): {consumerChunksCnt}")
+		tmpChunksCnt = tmpChunksCnt + len(v)
+	print(f"Consumer chunks: {len(consumerChunks.items())} (recursively: {tmpChunksCnt})")
 	if output:
 		logging.info(output)
 	output = ""
 
+	tmpChunksCnt = 0
 	for k, v in producerChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + k[0] + "\n " + hex(k[1]) + "\"];\n"
-	print(f"Producer chunks: {len(producerChunks.items())}")
+		if not (len(v.hookChunks) >= THRESHOLD and k in prodLargeRange.keys()):
+			tmpChunksCnt = tmpChunksCnt + len(v.hookChunks)
+	print(f"Producer chunks: {len(producerChunks.items())} (recursively: {tmpChunksCnt} non-large)")
 	if output:
 		logging.info(output)
 	output = ""
 
+	tmpChunksCnt = 0
 	for k, v in producerIdsChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + hex(k[0]) + "\n " + hex(k[1]) + "\"];\n"
-	print(f"ProducerIDs chunks: {len(producerIdsChunks.items())}")
+		tmpChunksCnt = tmpChunksCnt + len(v)
+	print(f"ProducerIDs chunks: {len(producerIdsChunks.items())} (recursively: {tmpChunksCnt})")
 	if output:
 		logging.info(output)
 	output = ""
 
+	tmpChunksCnt = 0
 	for k, v in colourChunks.items():
 		output += "\"" + hex(id(k)) + "\" [label=\"" + hex(k) + "\"];\n"
-	print(f"Colour chunks: {len(colourChunks.items())}")
+		tmpChunksCnt = tmpChunksCnt + len(v)
+	print(f"Colour chunks: {len(colourChunks.items())} (recursively: {tmpChunksCnt})")
 	if output:
 		logging.info(output)
 	output = ""
@@ -607,28 +618,27 @@ def main():
 	output = ""
 
 	# WRITE RELATIONSHIP TO DOT FILE
-	lrange_cons = {} # dict<range, list<int>>
+	lrange_cons = defaultdict(set) # dict<range, list<int>>
 	for consumer in consumerChunks.keys():
+		my_consumers.add(consumer) # DBG
 		rangeMap = consumerChunks[consumer]
 		for currentRange in rangeMap:
+			theRange = None
+			if currentRange in chunks: # better reassigning than having nested ifs
+				theRange = currentRange[0]
 			if currentRange in rangeHookId.keys():
 				hookID = rangeHookId[currentRange]
 				if hookID in prodLargeRange.keys():
 					largeRange = prodLargeRange[hookID]
 					if largeRange in largeChunks:
-						if largeRange not in lrange_cons.keys():
-							lrange_cons[largeRange] = [consumer]
-							output += "\"" + hex(id(largeRange)) + "\" -> \"" + hex(id(consumer)) + "\";\n"
-						else:
-							if consumer not in lrange_cons[largeRange]:
-								lrange_cons[largeRange].append(consumer)
-							output += "\"" + hex(id(largeRange)) + "\" -> \"" + hex(id(consumer)) + "\";\n"
-					elif currentRange in chunks:
-						output += "\"" + hex(id(currentRange[0])) + "\" -> \"" + hex(id(consumer)) + "\";\n"
-				elif currentRange in chunks:
-					output += "\"" + hex(id(currentRange[0])) + "\" -> \"" + hex(id(consumer)) + "\";\n"
-			elif currentRange in chunks:
-				output += "\"" + hex(id(currentRange[0])) + "\" -> \"" + hex(id(consumer)) + "\";\n"
+						lrange_cons[largeRange].add(consumer)
+						theRange = largeRange # other cases: currentRange[0]
+			if theRange is not None:
+				my_cons_edges.add((theRange, consumer)) # DBG
+				my_chunks.add(theRange)
+				output += "\"" + hex(id(theRange)) + "\" -> \"" + hex(id(consumer)) + "\";\n"
+			else:
+				print("Help, did I break something when plotting consumerChunks?")			
 	if output:
 		logging.info(output)
 	output = ""
@@ -636,22 +646,30 @@ def main():
 	lrange_prod = [] # list<range>
 	# dict<hookID, hookID_product>, hookID = pair<hookName,xor>, hookID_product = pair<list<range>, range>
 	for producer in producerChunks.keys():
+		my_producers.add(producer) # DBG
 		currentHookChunks = producerChunks[producer].hookChunks
 		for currentRange in currentHookChunks:
+			theRange = None
+			if currentRange in chunks: # better reassigning than having nested ifs
+				theRange = currentRange[0]
 			if currentRange in rangeHookId.keys():
 				hookID = rangeHookId[currentRange]
 				if hookID in prodLargeRange.keys():
 					largeRange = prodLargeRange[hookID]
-					if largeRange in largeChunks:
+					if largeRange in largeChunks:					
 						if largeRange not in lrange_prod:
 							lrange_prod.append(largeRange)
-							output += "\"" + hex(id(producer)) + "\" -> \"" + hex(id(largeRange[0])) + "\";\n"
-					elif currentRange in chunks:
-						output += "\"" + hex(id(producer)) + "\" -> \"" + hex(id(currentRange[0])) + "\";\n"
-				elif currentRange in chunks:
-					output += "\"" + hex(id(producer)) + "\" -> \"" + hex(id(currentRange[0])) + "\";\n"
-			elif currentRange in chunks:
-				output += "\"" + hex(id(producer)) + "\" -> \"" + hex(id(currentRange[0])) + "\";\n"
+							theRange = largeRange[0]
+						else:
+							# TODO no print when already found? or bug from Andrea?!?
+							theRange = None
+							print("DID ANDREA FORGOT THIS?!?")
+			if theRange is not None:
+				my_prod_edges.add((producer, theRange)) # DBG
+				my_chunks.add(theRange)
+				output += "\"" + hex(id(producer)) + "\" -> \"" + hex(id(theRange)) + "\";\n"
+			else:
+				print("Help, did I break something when plotting producerChunks?")
 	if output:
 		logging.info(output)
 	output = ""
@@ -660,6 +678,9 @@ def main():
 		ranges = producerIdsChunks[prodId]
 		for currentRange in ranges:
 			if currentRange in chunks:
+				my_producers.add(prodId) # DBG
+				my_prod_edges.add((prodId, currentRange[0])) # DBG
+				my_chunks.add(currentRange[0])
 				output += "\"" + hex(id(prodId)) + "\" -> \"" + hex(id(currentRange[0])) + "\";\n"
 	if output:
 		logging.info(output)
@@ -669,6 +690,9 @@ def main():
 		ranges = colourChunks[colour]
 		for currentRange in ranges:
 			if currentRange in chunks:
+				my_producers.add(colour) # DBG
+				my_prod_edges.add((colour, currentRange[0])) # DBG
+				my_chunks.add(currentRange[0])
 				output += "\"" + hex(id(colour)) + "\" -> \"" + hex(id(currentRange[0])) + "\";\n"
 	if output:
 		logging.info(output)
@@ -678,6 +702,55 @@ def main():
 	logging.info(output)
 	output = ""
 
+	print("Statistics on graph:")
+	print(f"Producer nodes: {len(my_producers)}")
+	print(f"Consumer nodes: {len(my_consumers)}")
+	print(f"Chunk nodes: {len(my_chunks)}")
+	print(f"Producer edges: {len(my_prod_edges)}")
+	print(f"Consumer edges: {len(my_cons_edges)}")
+
+	# Scan for chunks that have (same producer and) same consumers
+	the_chunks = list(my_chunks)
+	the_chunks_num = len(the_chunks)
+	the_skip_list = set()
+
+	# dumbie algorithmic: trade space for execution speed :)
+	the_scztoon = []
+	the_detailed_scztoon = defaultdict(set)
+	for i in range(0, the_chunks_num):
+		consumers = set([b for (a,b) in my_cons_edges if a == the_chunks[i]])
+		the_scztoon.append(Counter(consumers)) # OI OI OI
+	for i in range(0, the_chunks_num-1):
+		if i in the_skip_list:
+			continue # do not analyze previously matched node
+		j = i + 1
+		while j < the_chunks_num:
+			if (the_scztoon[i] == the_scztoon[j]):
+				the_detailed_scztoon[i].add(i)
+				the_detailed_scztoon[i].add(j)
+				the_skip_list.add(j)
+			j = j + 1
+	''' # slow naive version :)
+	for i in range(0, the_chunks_num-1):
+		if i in the_skip_list:
+			continue # do not analyze previously matched node
+		consumers = [b for (a,b) in my_cons_edges if a == the_chunks[i]]
+		j = i + 1
+		while j < the_chunks_num:
+			other_consumers = [b for (a,b) in my_cons_edges if a == the_chunks[j]]
+			if (sorted(consumers) == sorted(other_consumers)):
+				the_skip_list.add(j)
+			j = j + 1
+	'''
+	print(f"Chunks that can be merged based on uses: {len(the_skip_list)}")
+	
+	print(f"Candidate groups for merging: {len(the_detailed_scztoon.keys())}")
+	lengths = [2, 5, 10, 20]
+	for l in lengths:
+		cnt = len([x for x in the_detailed_scztoon.values() if len(x) > l])
+		print(f"> groups with more than {l} elements: {cnt}")
+		if cnt == 0:
+			break
 	return 0
 
 
